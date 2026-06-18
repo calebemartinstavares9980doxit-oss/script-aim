@@ -1,48 +1,40 @@
 --[[
-    QuantumFOV v7.0 - BUILD DEFINITIVO
-    - FOV Circle + Aimbot FUNCIONANDO
-    - Botão flutuante CORRIGIDO (abre só ao clicar nele)
-    - Todas as correções do ChatGPT aplicadas
-    - Performance Mode para i5-7200U
+    QuantumAim v8.0 - AIMBOT APELÃO + ESP ESQUELETO
+    - Mira instantânea na cabeça
+    - ESP mostrando esqueleto dos inimigos
+    - Sem FOV Circle (mais limpo)
+    - Ultra agressivo
 ]]
 
-if game:GetService("CoreGui"):FindFirstChild("QuantumFOV_v7") then
-    game:GetService("CoreGui"):FindFirstChild("QuantumFOV_v7"):Destroy()
+if game:GetService("CoreGui"):FindFirstChild("QuantumAim_v8") then
+    game:GetService("CoreGui"):FindFirstChild("QuantumAim_v8"):Destroy()
 end
 
--- ============================================
--- MÓDULO 1: CONFIGURAÇÕES
--- ============================================
+-- Configurações
 local Config = {
     Aimbot = {
         Enabled = false,
-        AimPart = "Head",
-        FOV = 60,
-        Smoothness = 0.8,
-        Prediction = 0.15,
-        TeamCheck = true,
-        WallCheck = false,
-        AutoShoot = false,
-        TriggerBot = false
+        AimPart = "Head", -- Head = cabeça, HumanoidRootPart = peito
+        Smoothness = 1, -- 1 = instantâneo (apelão)
+        Prediction = 0.2, -- Predição de movimento
+        TeamCheck = false, -- false = atira em todos
+        WallCheck = false, -- false = atira através de paredes
+        AutoShoot = true, -- Já liga atirando
+        TriggerBot = false,
+        MaxDistance = 5000 -- Alcance máximo
     },
     ESP = {
         Enabled = false,
+        Skeleton = false, -- Esqueleto completo
         Box = false,
         Name = false,
         Distance = false,
         HealthBar = false,
-        Line = false,
-        MaxDistance = 2000
-    },
-    Performance = {
-        TargetFPS = 50,
-        LowSpec = true
+        MaxDistance = 3000
     }
 }
 
--- ============================================
--- MÓDULO 2: SERVIÇOS
--- ============================================
+-- Serviços
 local Services = {
     Players = game:GetService("Players"),
     RunService = game:GetService("RunService"),
@@ -58,24 +50,18 @@ end
 local LocalPlayer = Services.Players.LocalPlayer
 local Camera = Services.Workspace.CurrentCamera
 
--- ============================================
--- MÓDULO 3: SISTEMA DE INPUT (CORRIGIDO)
--- ============================================
+-- Sistema de Input (SIMPLIFICADO)
 local InputManager = {
-    Platform = "Mouse",
     ClickHandlers = {},
-    SliderHandlers = {}
+    Platform = "Mouse"
 }
 
 function InputManager:DetectPlatform()
     pcall(function()
         local hasTouch = Services.UserInputService.TouchEnabled
         local hasKeyboard = Services.UserInputService.KeyboardEnabled
-        local hasMouse = Services.UserInputService.MouseEnabled
-        if hasTouch and not hasKeyboard and not hasMouse then
+        if hasTouch and not hasKeyboard then
             self.Platform = "Touch"
-        elseif hasTouch and hasKeyboard then
-            self.Platform = "Hybrid"
         else
             self.Platform = "Mouse"
         end
@@ -84,27 +70,24 @@ end
 
 function InputManager:SafeClick()
     if self.Platform == "Mouse" then
-        pcall(function() mouse1press() task.wait(0.015) mouse1release() end)
+        pcall(function() mouse1press() task.wait(0.01) mouse1release() end)
     else
         pcall(function()
             local vim = game:GetService("VirtualInputManager")
             if vim then
                 vim:SendMouseButtonEvent(0, 0, 0, true, nil, 0)
-                task.wait(0.015)
+                task.wait(0.01)
                 vim:SendMouseButtonEvent(0, 0, 0, false, nil, 0)
             end
         end)
     end
 end
 
--- CORRIGIDO: Verifica se o clique foi no objeto ESPECÍFICO
 function InputManager:IsClickOnObject(input, guiObject)
     if not guiObject or not input then return false end
-    
     local mousePos = Services.UserInputService:GetMouseLocation()
     local objPos = guiObject.AbsolutePosition
     local objSize = guiObject.AbsoluteSize
-    
     return mousePos.X >= objPos.X and mousePos.X <= objPos.X + objSize.X and
            mousePos.Y >= objPos.Y and mousePos.Y <= objPos.Y + objSize.Y
 end
@@ -120,34 +103,12 @@ function InputManager:RegisterClickHandler(guiObject, callback)
     })
 end
 
-function InputManager:RegisterSliderHandler(sliderBar, sliderKnob, sliderFill, onUpdate)
-    table.insert(self.SliderHandlers, {
-        Bar = sliderBar,
-        Knob = sliderKnob,
-        Fill = sliderFill,
-        OnUpdate = onUpdate,
-        IsActive = false
-    })
-end
-
 function InputManager:Initialize()
     self:DetectPlatform()
     
     Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
-        -- Sliders primeiro
-        for _, handler in ipairs(self.SliderHandlers) do
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-               input.UserInputType == Enum.UserInputType.Touch then
-                if self:IsClickOnObject(input, handler.Knob) then
-                    handler.IsActive = true
-                    return
-                end
-            end
-        end
-        
-        -- Botões de clique
         for _, handler in ipairs(self.ClickHandlers) do
             if input.UserInputType == Enum.UserInputType.MouseButton1 or 
                input.UserInputType == Enum.UserInputType.Touch then
@@ -156,7 +117,7 @@ function InputManager:Initialize()
                     handler.HasMoved = false
                     handler.StartPos = handler.Object.Position
                     handler.StartMouse = input.Position
-                    return -- Só ativa UM handler por vez
+                    return
                 end
             end
         end
@@ -165,19 +126,6 @@ function InputManager:Initialize()
     Services.UserInputService.InputChanged:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
-        -- Sliders
-        for _, handler in ipairs(self.SliderHandlers) do
-            if handler.IsActive and (input.UserInputType == Enum.UserInputType.MouseMovement or 
-                                      input.UserInputType == Enum.UserInputType.Touch) then
-                local mousePos = Services.UserInputService:GetMouseLocation()
-                local barPos = handler.Bar.AbsolutePosition
-                local barSize = handler.Bar.AbsoluteSize
-                local percent = math.clamp((mousePos.X - barPos.X) / barSize.X, 0, 1)
-                if handler.OnUpdate then handler.OnUpdate(percent) end
-            end
-        end
-        
-        -- Drag de botões
         for _, handler in ipairs(self.ClickHandlers) do
             if handler.IsDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
                                         input.UserInputType == Enum.UserInputType.Touch) then
@@ -198,12 +146,6 @@ function InputManager:Initialize()
     Services.UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
-        -- Finalizar sliders
-        for _, handler in ipairs(self.SliderHandlers) do
-            handler.IsActive = false
-        end
-        
-        -- Finalizar drag/clique
         for _, handler in ipairs(self.ClickHandlers) do
             if handler.IsDragging then
                 handler.IsDragging = false
@@ -216,79 +158,31 @@ function InputManager:Initialize()
 end
 
 -- ============================================
--- MÓDULO 4: SISTEMA DE RENDER (FOV Circle)
--- ============================================
-local RenderManager = {
-    FOVCircle = nil
-}
-
-function RenderManager:CreateFOVCircle(radius)
-    if self.FOVCircle then
-        self.FOVCircle:Destroy()
-    end
-    
-    self.FOVCircle = Instance.new("Frame")
-    self.FOVCircle.Name = "FOVCircle"
-    self.FOVCircle.Parent = Services.CoreGui
-    self.FOVCircle.Size = UDim2.new(0, radius * 2, 0, radius * 2)
-    self.FOVCircle.Position = UDim2.new(0.5, -radius, 0.5, -radius)
-    self.FOVCircle.BackgroundTransparency = 1
-    self.FOVCircle.BorderSizePixel = 0
-    self.FOVCircle.ZIndex = 1
-    
-    local circle = Instance.new("ImageLabel")
-    circle.Parent = self.FOVCircle
-    circle.Size = UDim2.new(1, 0, 1, 0)
-    circle.BackgroundTransparency = 1
-    circle.Image = "rbxassetid://3926305904"
-    circle.ImageColor3 = Color3.fromRGB(100, 150, 255)
-    circle.ImageTransparency = 0.7
-    circle.ZIndex = 1
-    
-    local fill = Instance.new("ImageLabel")
-    fill.Parent = self.FOVCircle
-    fill.Size = UDim2.new(1, 0, 1, 0)
-    fill.BackgroundTransparency = 1
-    fill.Image = "rbxassetid://3926307971"
-    fill.ImageColor3 = Color3.fromRGB(100, 150, 255)
-    fill.ImageTransparency = 0.9
-    fill.ZIndex = 1
-    
-    local hLine = Instance.new("Frame")
-    hLine.Parent = self.FOVCircle
-    hLine.Size = UDim2.new(1, 0, 0, 1)
-    hLine.Position = UDim2.new(0, 0, 0.5, -0.5)
-    hLine.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-    hLine.BackgroundTransparency = 0.5
-    hLine.BorderSizePixel = 0
-    
-    local vLine = Instance.new("Frame")
-    vLine.Parent = self.FOVCircle
-    vLine.Size = UDim2.new(0, 1, 1, 0)
-    vLine.Position = UDim2.new(0.5, -0.5, 0, 0)
-    vLine.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-    vLine.BackgroundTransparency = 0.5
-    vLine.BorderSizePixel = 0
-end
-
-function RenderManager:UpdateFOVCircle(radius)
-    if not self.FOVCircle then
-        self:CreateFOVCircle(radius)
-        return
-    end
-    
-    self.FOVCircle.Size = UDim2.new(0, radius * 2, 0, radius * 2)
-    self.FOVCircle.Position = UDim2.new(0.5, -radius, 0.5, -radius)
-end
-
--- ============================================
--- MÓDULO 5: SISTEMA DE ESP (OTIMIZADO)
+-- SISTEMA DE ESP ESQUELETO
 -- ============================================
 local ESPManager = {
     Objects = {},
     HasDrawing = false,
     LastUpdate = 0,
-    UpdateInterval = 0.08
+    UpdateInterval = 0.05
+}
+
+-- Partes do esqueleto
+local SkeletonParts = {
+    {"Head", "UpperTorso"},
+    {"UpperTorso", "LowerTorso"},
+    {"UpperTorso", "LeftUpperArm"},
+    {"LeftUpperArm", "LeftLowerArm"},
+    {"LeftLowerArm", "LeftHand"},
+    {"UpperTorso", "RightUpperArm"},
+    {"RightUpperArm", "RightLowerArm"},
+    {"RightLowerArm", "RightHand"},
+    {"LowerTorso", "LeftUpperLeg"},
+    {"LeftUpperLeg", "LeftLowerLeg"},
+    {"LeftLowerLeg", "LeftFoot"},
+    {"LowerTorso", "RightUpperLeg"},
+    {"RightUpperLeg", "RightLowerLeg"},
+    {"RightLowerLeg", "RightFoot"}
 }
 
 function ESPManager:Initialize()
@@ -304,43 +198,48 @@ function ESPManager:CreateESP(player)
     
     local esp = {
         Player = player,
+        Bones = {}, -- Linhas do esqueleto
         Box = Drawing.new("Square"),
         Name = Drawing.new("Text"),
         Distance = Drawing.new("Text"),
         HealthBar = Drawing.new("Square"),
         HealthFill = Drawing.new("Square"),
-        Line = Drawing.new("Line"),
         Destroyed = false
     }
     
-    esp.Box.Color = Color3.fromRGB(100, 150, 255)
+    -- Criar linhas para cada osso
+    for _ = 1, #SkeletonParts do
+        local line = Drawing.new("Line")
+        line.Color = Color3.fromRGB(255, 255, 255)
+        line.Thickness = 1.5
+        line.Visible = false
+        table.insert(esp.Bones, line)
+    end
+    
+    esp.Box.Color = Color3.fromRGB(255, 50, 50)
     esp.Box.Thickness = 2
     esp.Box.Filled = false
     esp.Box.Visible = false
     
     esp.Name.Color = Color3.fromRGB(255, 255, 255)
-    esp.Name.Size = 13
+    esp.Name.Size = 14
     esp.Name.Center = true
     esp.Name.Outline = true
     esp.Name.Visible = false
     
-    esp.Distance.Color = Color3.fromRGB(180, 200, 255)
+    esp.Distance.Color = Color3.fromRGB(200, 200, 200)
     esp.Distance.Size = 12
     esp.Distance.Center = true
     esp.Distance.Outline = true
     esp.Distance.Visible = false
     
-    esp.HealthBar.Color = Color3.fromRGB(30, 30, 50)
+    esp.HealthBar.Color = Color3.fromRGB(30, 30, 30)
     esp.HealthBar.Filled = true
     esp.HealthBar.Visible = false
     
-    esp.HealthFill.Color = Color3.fromRGB(0, 255, 100)
+    esp.HealthFill.Color = Color3.fromRGB(0, 255, 0)
     esp.HealthFill.Filled = true
     esp.HealthFill.Visible = false
-    
-    esp.Line.Color = Color3.fromRGB(100, 150, 255)
-    esp.Line.Thickness = 1
-    esp.Line.Visible = false
     
     table.insert(self.Objects, esp)
 end
@@ -353,12 +252,14 @@ function ESPManager:Update()
     if not Config.ESP.Enabled then
         for _, esp in ipairs(self.Objects) do
             if not esp.Destroyed then
+                for _, bone in ipairs(esp.Bones) do
+                    bone.Visible = false
+                end
                 esp.Box.Visible = false
                 esp.Name.Visible = false
                 esp.Distance.Visible = false
                 esp.HealthBar.Visible = false
                 esp.HealthFill.Visible = false
-                esp.Line.Visible = false
             end
         end
         return
@@ -374,8 +275,9 @@ function ESPManager:Update()
         
         local character = player.Character
         if not character then
+            for _, bone in ipairs(esp.Bones) do bone.Visible = false end
             esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
-            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false
             continue
         end
         
@@ -384,15 +286,18 @@ function ESPManager:Update()
         local rootPart = character:FindFirstChild("HumanoidRootPart")
         
         if not humanoid or not head or not rootPart or humanoid.Health <= 0 then
+            for _, bone in ipairs(esp.Bones) do bone.Visible = false end
             esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
-            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false
             continue
         end
         
         local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        
         if not onScreen then
+            for _, bone in ipairs(esp.Bones) do bone.Visible = false end
             esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
-            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false
             continue
         end
         
@@ -402,11 +307,38 @@ function ESPManager:Update()
         end
         
         if distance > Config.ESP.MaxDistance then
+            for _, bone in ipairs(esp.Bones) do bone.Visible = false end
             esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
-            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false
             continue
         end
         
+        -- ESP Esqueleto
+        if Config.ESP.Skeleton then
+            for i, partPair in ipairs(SkeletonParts) do
+                local partA = character:FindFirstChild(partPair[1])
+                local partB = character:FindFirstChild(partPair[2])
+                
+                if partA and partB then
+                    local posA, visibleA = Camera:WorldToViewportPoint(partA.Position)
+                    local posB, visibleB = Camera:WorldToViewportPoint(partB.Position)
+                    
+                    if visibleA and visibleB then
+                        esp.Bones[i].Visible = true
+                        esp.Bones[i].From = Vector2.new(posA.X, posA.Y)
+                        esp.Bones[i].To = Vector2.new(posB.X, posB.Y)
+                    else
+                        esp.Bones[i].Visible = false
+                    end
+                else
+                    esp.Bones[i].Visible = false
+                end
+            end
+        else
+            for _, bone in ipairs(esp.Bones) do bone.Visible = false end
+        end
+        
+        -- Box
         local safeDistance = math.max(distance, 1)
         local scale = 1000 / safeDistance
         local boxWidth = math.clamp(scale * 3, 10, 200)
@@ -440,19 +372,9 @@ function ESPManager:Update()
             esp.HealthFill.Size = Vector2.new(3, boxHeight * healthPercent)
             esp.HealthFill.Position = Vector2.new(headPos.X - boxWidth/2 - 5, 
                 headPos.Y - boxHeight/2 + boxHeight * (1 - healthPercent))
-            
-            if healthPercent > 0.6 then esp.HealthFill.Color = Color3.fromRGB(0, 255, 0)
-            elseif healthPercent > 0.3 then esp.HealthFill.Color = Color3.fromRGB(255, 255, 0)
-            else esp.HealthFill.Color = Color3.fromRGB(255, 0, 0) end
         else
             esp.HealthBar.Visible = false esp.HealthFill.Visible = false
         end
-        
-        if Config.ESP.Line then
-            esp.Line.Visible = true
-            esp.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            esp.Line.To = Vector2.new(headPos.X, headPos.Y + boxHeight/2)
-        else esp.Line.Visible = false end
     end
 end
 
@@ -460,12 +382,14 @@ function ESPManager:RemovePlayer(player)
     for i, esp in ipairs(self.Objects) do
         if esp.Player == player then
             esp.Destroyed = true
+            for _, bone in ipairs(esp.Bones) do
+                pcall(function() bone:Remove() end)
+            end
             pcall(function() esp.Box:Remove() end)
             pcall(function() esp.Name:Remove() end)
             pcall(function() esp.Distance:Remove() end)
             pcall(function() esp.HealthBar:Remove() end)
             pcall(function() esp.HealthFill:Remove() end)
-            pcall(function() esp.Line:Remove() end)
             table.remove(self.Objects, i)
             break
         end
@@ -473,38 +397,19 @@ function ESPManager:RemovePlayer(player)
 end
 
 -- ============================================
--- MÓDULO 6: SISTEMA DE MIRA (FUNCIONAL)
+-- SISTEMA DE AIMBOT APELÃO
 -- ============================================
 local AimManager = {
     CurrentTarget = nil,
-    LastUpdate = 0,
     LastShot = 0,
-    UpdateInterval = 0.016,
-    LastDeltaTime = 0.016
+    ShotCooldown = 0.05 -- 20 tiros por segundo
 }
 
-function AimManager:IsVisible(character, part)
-    if not Config.Aimbot.WallCheck then return true end
+function AimManager:GetBestTarget()
+    if not LocalPlayer.Character or not Camera then return nil end
     
-    local filterList = {LocalPlayer.Character, character}
-    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-    if tool then table.insert(filterList, tool) end
-    
-    local rayOrigin = Camera.CFrame.Position
-    local rayDirection = part.Position - rayOrigin
-    
-    local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = filterList
-    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-    
-    local rayResult = Services.Workspace:Raycast(rayOrigin, rayDirection, rayParams)
-    return rayResult == nil
-end
-
-function AimManager:GetTargets()
-    local targets = {}
-    if not LocalPlayer.Character or not Camera then return targets end
-    
+    local bestTarget = nil
+    local closestDistance = Config.Aimbot.MaxDistance
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     
     for _, player in ipairs(Services.Players:GetPlayers()) do
@@ -520,61 +425,49 @@ function AimManager:GetTargets()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then continue end
         
-        if not self:IsVisible(character, aimPart) then continue end
+        local distance3D = (LocalPlayer.Character.HumanoidRootPart.Position - aimPart.Position).Magnitude
+        if distance3D > Config.Aimbot.MaxDistance then continue end
         
         local screenPos, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
         if not onScreen then continue end
         
         local distance2D = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-        if distance2D > Config.Aimbot.FOV then continue end
         
-        local velocity = aimPart:IsA("BasePart") and (aimPart.AssemblyLinearVelocity or aimPart.Velocity) or Vector3.zero
-        local predictedPos = aimPart.Position + (velocity * Config.Aimbot.Prediction)
-        
-        table.insert(targets, {
-            Player = player,
-            Position = predictedPos,
-            Distance = distance2D
-        })
+        if distance3D < closestDistance then
+            closestDistance = distance3D
+            
+            local velocity = aimPart:IsA("BasePart") and (aimPart.AssemblyLinearVelocity or aimPart.Velocity) or Vector3.zero
+            local predictedPos = aimPart.Position + (velocity * Config.Aimbot.Prediction)
+            
+            bestTarget = {
+                Player = player,
+                Position = predictedPos,
+                Distance = distance3D
+            }
+        end
     end
     
-    table.sort(targets, function(a, b) return a.Distance < b.Distance end)
-    return targets
+    return bestTarget
 end
 
 function AimManager:Update()
-    local currentTime = os.clock()
-    if currentTime - self.LastUpdate < self.UpdateInterval then return end
-    
-    self.LastDeltaTime = math.max(currentTime - self.LastUpdate, 0.001)
-    self.LastUpdate = currentTime
-    
     if not Config.Aimbot.Enabled then
         self.CurrentTarget = nil
         return
     end
     
-    local targets = self:GetTargets()
+    local target = self:GetBestTarget()
     
-    if #targets > 0 then
-        self.CurrentTarget = targets[1]
+    if target then
+        self.CurrentTarget = target
         
-        -- Mira suave com delta time
-        local smoothFactor = 1 - math.pow(1 - Config.Aimbot.Smoothness, self.LastDeltaTime * 60)
-        local targetCFrame = CFrame.new(Camera.CFrame.Position, self.CurrentTarget.Position)
-        Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(smoothFactor, 0.01, 1))
+        -- Mira instantânea na cabeça (APELÃO)
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
         
-        if Config.Aimbot.AutoShoot and currentTime - self.LastShot > 0.08 then
-            InputManager:SafeClick()
-            self.LastShot = currentTime
-        end
-        
-        if Config.Aimbot.TriggerBot and not Config.Aimbot.AutoShoot then
-            local mousePos = Services.UserInputService:GetMouseLocation()
-            local targetScreenPos = Camera:WorldToViewportPoint(self.CurrentTarget.Position)
-            local distanceToTarget = (Vector2.new(targetScreenPos.X, targetScreenPos.Y) - Vector2.new(mousePos.X, mousePos.Y)).Magnitude
-            
-            if distanceToTarget < 35 and currentTime - self.LastShot > 0.05 then
+        -- AutoShoot disparando loucamente
+        if Config.Aimbot.AutoShoot then
+            local currentTime = os.clock()
+            if currentTime - self.LastShot > self.ShotCooldown then
                 InputManager:SafeClick()
                 self.LastShot = currentTime
             end
@@ -585,18 +478,17 @@ function AimManager:Update()
 end
 
 -- ============================================
--- MÓDULO 7: INTERFACE (UI CORRIGIDA)
+-- INTERFACE SIMPLES
 -- ============================================
 local UIManager = {
     ScreenGui = nil,
     MainFrame = nil,
-    FloatButton = nil,
-    IsMinimized = false
+    FloatButton = nil
 }
 
 function UIManager:Create()
     local gui = Instance.new("ScreenGui")
-    gui.Name = "QuantumFOV_v7"
+    gui.Name = "QuantumAim_v8"
     gui.Parent = Services.CoreGui
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -604,61 +496,29 @@ function UIManager:Create()
     
     self.ScreenGui = gui
     
-    -- ============================================
-    -- BOTÃO FLUTUANTE (CORRIGIDO)
-    -- ============================================
+    -- Botão Flutuante
     self.FloatButton = Instance.new("TextButton")
     self.FloatButton.Name = "FloatButton"
     self.FloatButton.Parent = gui
-    self.FloatButton.Size = UDim2.new(0, 48, 0, 48)
-    self.FloatButton.Position = UDim2.new(0.85, 0, 0.45, 0)
-    self.FloatButton.BackgroundColor3 = Color3.fromRGB(20, 25, 40)
-    self.FloatButton.Text = ""
+    self.FloatButton.Size = UDim2.new(0, 45, 0, 45)
+    self.FloatButton.Position = UDim2.new(0.88, 0, 0.45, 0)
+    self.FloatButton.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
+    self.FloatButton.Text = "🎯"
+    self.FloatButton.TextSize = 20
     self.FloatButton.AutoButtonColor = false
     self.FloatButton.BorderSizePixel = 0
     self.FloatButton.ZIndex = 10
-    self.FloatButton.BackgroundTransparency = 0.15
-    self.FloatButton.Active = true
-    self.FloatButton.Selectable = true
+    self.FloatButton.BackgroundTransparency = 0.1
     
     local floatCorner = Instance.new("UICorner")
     floatCorner.CornerRadius = UDim.new(0, 14)
     floatCorner.Parent = self.FloatButton
     
-    local floatStroke = Instance.new("UIStroke")
-    floatStroke.Parent = self.FloatButton
-    floatStroke.Color = Color3.fromRGB(80, 140, 255)
-    floatStroke.Thickness = 2
-    floatStroke.Transparency = 0.3
-    
-    -- Ícone de alvo
-    local centerDot = Instance.new("Frame")
-    centerDot.Parent = self.FloatButton
-    centerDot.Size = UDim2.new(0, 10, 0, 10)
-    centerDot.Position = UDim2.new(0.5, -5, 0.5, -5)
-    centerDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    centerDot.BorderSizePixel = 0
-    centerDot.ZIndex = 11
-    
-    local dotCorner = Instance.new("UICorner")
-    dotCorner.CornerRadius = UDim.new(1, 0)
-    dotCorner.Parent = centerDot
-    
-    local outerRing = Instance.new("ImageLabel")
-    outerRing.Parent = self.FloatButton
-    outerRing.Size = UDim2.new(0, 30, 0, 30)
-    outerRing.Position = UDim2.new(0.5, -15, 0.5, -15)
-    outerRing.BackgroundTransparency = 1
-    outerRing.Image = "rbxassetid://3926305904"
-    outerRing.ImageColor3 = Color3.fromRGB(255, 255, 255)
-    outerRing.ImageTransparency = 0.5
-    outerRing.ZIndex = 10
-    
     self.StatusDot = Instance.new("Frame")
     self.StatusDot.Parent = self.FloatButton
     self.StatusDot.Size = UDim2.new(0, 10, 0, 10)
     self.StatusDot.Position = UDim2.new(1, -2, 0, -2)
-    self.StatusDot.BackgroundColor3 = Color3.fromRGB(80, 140, 255)
+    self.StatusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     self.StatusDot.BorderSizePixel = 0
     self.StatusDot.ZIndex = 12
     
@@ -666,61 +526,57 @@ function UIManager:Create()
     statusCorner.CornerRadius = UDim.new(1, 0)
     statusCorner.Parent = self.StatusDot
     
-    -- ============================================
-    -- FRAME PRINCIPAL
-    -- ============================================
+    -- Frame Principal
     self.MainFrame = Instance.new("Frame")
     self.MainFrame.Parent = gui
-    self.MainFrame.Size = UDim2.new(0, 340, 0, 460)
+    self.MainFrame.Size = UDim2.new(0, 320, 0, 380)
     self.MainFrame.Position = UDim2.new(0.02, 0, 0.15, 0)
-    self.MainFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 35)
-    self.MainFrame.BackgroundTransparency = 0.15
+    self.MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    self.MainFrame.BackgroundTransparency = 0.1
     self.MainFrame.BorderSizePixel = 0
     self.MainFrame.Visible = true
-    self.MainFrame.Active = true
     
     local mainCorner = Instance.new("UICorner")
-    mainCorner.CornerRadius = UDim.new(0, 12)
+    mainCorner.CornerRadius = UDim.new(0, 10)
     mainCorner.Parent = self.MainFrame
     
     local mainStroke = Instance.new("UIStroke")
     mainStroke.Parent = self.MainFrame
-    mainStroke.Color = Color3.fromRGB(80, 140, 255)
+    mainStroke.Color = Color3.fromRGB(255, 50, 50)
     mainStroke.Thickness = 1.5
     mainStroke.Transparency = 0.4
     
     -- TitleBar
     local TitleBar = Instance.new("Frame")
     TitleBar.Parent = self.MainFrame
-    TitleBar.Size = UDim2.new(1, 0, 0, 40)
-    TitleBar.BackgroundColor3 = Color3.fromRGB(25, 30, 50)
+    TitleBar.Size = UDim2.new(1, 0, 0, 38)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
     TitleBar.BackgroundTransparency = 0.3
     TitleBar.BorderSizePixel = 0
-    TitleBar.Active = true
     
     local titleBarCorner = Instance.new("UICorner")
-    titleBarCorner.CornerRadius = UDim.new(0, 12)
+    titleBarCorner.CornerRadius = UDim.new(0, 10)
     titleBarCorner.Parent = TitleBar
     
     local Title = Instance.new("TextLabel")
     Title.Parent = TitleBar
-    Title.Size = UDim2.new(1, -80, 1, 0)
+    Title.Size = UDim2.new(1, -60, 1, 0)
     Title.Position = UDim2.new(0, 15, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "QUANTUM FOV v7.0"
-    Title.TextColor3 = Color3.fromRGB(180, 200, 255)
+    Title.Text = "💀 QUANTUM AIM"
+    Title.TextColor3 = Color3.fromRGB(255, 200, 200)
     Title.TextSize = 14
-    Title.Font = Enum.Font.GothamBold
+    Title.Font = Enum.Font.GothamBlack
     Title.TextXAlignment = Enum.TextXAlignment.Left
     
     local MinimizeBtn = Instance.new("TextButton")
     MinimizeBtn.Parent = TitleBar
-    MinimizeBtn.Size = UDim2.new(0, 26, 0, 26)
-    MinimizeBtn.Position = UDim2.new(1, -60, 0.5, -13)
-    MinimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 200)
+    MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+    MinimizeBtn.Position = UDim2.new(1, -30, 0.5, -12)
+    MinimizeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     MinimizeBtn.Text = "−"
-    MinimizeBtn.TextSize = 18
+    MinimizeBtn.TextSize = 16
     MinimizeBtn.Font = Enum.Font.GothamBold
     MinimizeBtn.AutoButtonColor = false
     MinimizeBtn.BorderSizePixel = 0
@@ -730,44 +586,25 @@ function UIManager:Create()
     minCorner.Parent = MinimizeBtn
     
     MinimizeBtn.MouseButton1Click:Connect(function()
-        self:Minimize()
-    end)
-    
-    local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Parent = TitleBar
-    CloseBtn.Size = UDim2.new(0, 26, 0, 26)
-    CloseBtn.Position = UDim2.new(1, -30, 0.5, -13)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseBtn.Text = "✕"
-    CloseBtn.TextSize = 14
-    CloseBtn.Font = Enum.Font.GothamBold
-    CloseBtn.AutoButtonColor = false
-    CloseBtn.BorderSizePixel = 0
-    
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0, 4)
-    closeCorner.Parent = CloseBtn
-    
-    CloseBtn.MouseButton1Click:Connect(function()
-        gui:Destroy()
+        self.MainFrame.Visible = false
+        self.StatusDot.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
     end)
     
     -- Conteúdo
     local ContentFrame = Instance.new("ScrollingFrame")
     ContentFrame.Parent = self.MainFrame
-    ContentFrame.Size = UDim2.new(1, 0, 1, -40)
-    ContentFrame.Position = UDim2.new(0, 0, 0, 40)
+    ContentFrame.Size = UDim2.new(1, 0, 1, -38)
+    ContentFrame.Position = UDim2.new(0, 0, 0, 38)
     ContentFrame.BackgroundTransparency = 1
     ContentFrame.ScrollBarThickness = 3
-    ContentFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 140, 255)
-    ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 420)
+    ContentFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 50, 50)
+    ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
     ContentFrame.BorderSizePixel = 0
     
     local UIListLayout = Instance.new("UIListLayout")
     UIListLayout.Parent = ContentFrame
     UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    UIListLayout.Padding = UDim.new(0, 6)
+    UIListLayout.Padding = UDim.new(0, 5)
     
     local UIPadding = Instance.new("UIPadding")
     UIPadding.Parent = ContentFrame
@@ -775,164 +612,88 @@ function UIManager:Create()
     UIPadding.PaddingLeft = UDim.new(0, 8)
     UIPadding.PaddingRight = UDim.new(0, 8)
     
-    local function AddButton(text, callback)
+    local function AddButton(text, callback, defaultEnabled)
         local btn = Instance.new("TextButton")
         btn.Parent = ContentFrame
-        btn.Size = UDim2.new(1, 0, 0, 32)
-        btn.BackgroundColor3 = Color3.fromRGB(30, 35, 55)
-        btn.BackgroundTransparency = 0.3
-        btn.TextColor3 = Color3.fromRGB(200, 210, 240)
-        btn.Text = "  🔴  " .. text
-        btn.Font = Enum.Font.GothamSemibold
+        btn.Size = UDim2.new(1, 0, 0, 30)
+        btn.BackgroundColor3 = defaultEnabled and Color3.fromRGB(200, 30, 30) or Color3.fromRGB(30, 30, 45)
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Text = (defaultEnabled and "  🟢  " or "  🔴  ") .. text
+        btn.Font = Enum.Font.GothamBold
         btn.TextSize = 11
         btn.AutoButtonColor = false
         btn.BorderSizePixel = 0
         btn.TextXAlignment = Enum.TextXAlignment.Left
         
         local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 5)
+        btnCorner.CornerRadius = UDim.new(0, 4)
         btnCorner.Parent = btn
         
-        local enabled = false
+        local enabled = defaultEnabled or false
         
         btn.MouseButton1Click:Connect(function()
             enabled = not enabled
             btn.Text = (enabled and "  🟢  " or "  🔴  ") .. text
-            btn.BackgroundColor3 = enabled and Color3.fromRGB(60, 100, 200) or Color3.fromRGB(30, 35, 55)
+            btn.BackgroundColor3 = enabled and Color3.fromRGB(200, 30, 30) or Color3.fromRGB(30, 30, 45)
             if callback then callback(enabled) end
         end)
         
         return btn
     end
     
-    -- Slider FOV
-    local FOVSliderFrame = Instance.new("Frame")
-    FOVSliderFrame.Parent = ContentFrame
-    FOVSliderFrame.Size = UDim2.new(1, 0, 0, 50)
-    FOVSliderFrame.BackgroundTransparency = 1
-    
-    self.FOVLabel = Instance.new("TextLabel")
-    self.FOVLabel.Parent = FOVSliderFrame
-    self.FOVLabel.Size = UDim2.new(1, 0, 0, 18)
-    self.FOVLabel.BackgroundTransparency = 1
-    self.FOVLabel.Text = "🎯  FOV: 60°"
-    self.FOVLabel.TextColor3 = Color3.fromRGB(180, 200, 255)
-    self.FOVLabel.TextSize = 12
-    self.FOVLabel.Font = Enum.Font.GothamBold
-    self.FOVLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
-    self.SliderBar = Instance.new("Frame")
-    self.SliderBar.Parent = FOVSliderFrame
-    self.SliderBar.Size = UDim2.new(1, 0, 0, 4)
-    self.SliderBar.Position = UDim2.new(0, 0, 1, -18)
-    self.SliderBar.BackgroundColor3 = Color3.fromRGB(40, 45, 65)
-    self.SliderBar.BorderSizePixel = 0
-    
-    local barCorner = Instance.new("UICorner")
-    barCorner.CornerRadius = UDim.new(1, 0)
-    barCorner.Parent = self.SliderBar
-    
-    self.SliderFill = Instance.new("Frame")
-    self.SliderFill.Parent = self.SliderBar
-    self.SliderFill.Size = UDim2.new(0.33, 0, 1, 0)
-    self.SliderFill.BackgroundColor3 = Color3.fromRGB(80, 140, 255)
-    self.SliderFill.BorderSizePixel = 0
-    
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(1, 0)
-    fillCorner.Parent = self.SliderFill
-    
-    self.SliderKnob = Instance.new("TextButton")
-    self.SliderKnob.Parent = self.SliderBar
-    self.SliderKnob.Size = UDim2.new(0, 16, 0, 16)
-    self.SliderKnob.Position = UDim2.new(0.33, -8, 0.5, -8)
-    self.SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    self.SliderKnob.Text = ""
-    self.SliderKnob.AutoButtonColor = false
-    self.SliderKnob.BorderSizePixel = 0
-    
-    local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(1, 0)
-    knobCorner.Parent = self.SliderKnob
-    
-    InputManager:RegisterSliderHandler(self.SliderBar, self.SliderKnob, self.SliderFill, function(percent)
-        local fovValue = math.floor(10 + (180 - 10) * percent)
-        Config.Aimbot.FOV = fovValue
-        self.FOVLabel.Text = "🎯  FOV: " .. fovValue .. "°"
-        self.SliderKnob.Position = UDim2.new(percent, -8, 0.5, -8)
-        self.SliderFill.Size = UDim2.new(percent, 0, 1, 0)
-        RenderManager:UpdateFOVCircle(fovValue)
-    end)
+    AddButton("AIMBOT (MIRA NA CABEÇA)", function(enabled) Config.Aimbot.Enabled = enabled end, true)
+    AddButton("AUTO FIRE (ATIRA SOZINHO)", function(enabled) Config.Aimbot.AutoShoot = enabled end, true)
+    AddButton("ATRAVÉS DE PAREDES", function(enabled) Config.Aimbot.WallCheck = not enabled end, true)
+    AddButton("MIRAR EM TODOS", function(enabled) Config.Aimbot.TeamCheck = not enabled end, true)
     
     local sep = Instance.new("Frame")
     sep.Parent = ContentFrame
     sep.Size = UDim2.new(1, 0, 0, 1)
-    sep.BackgroundColor3 = Color3.fromRGB(80, 140, 255)
+    sep.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     sep.BackgroundTransparency = 0.5
     sep.BorderSizePixel = 0
     
-    AddButton("AIMBOT", function(enabled) Config.Aimbot.Enabled = enabled end)
-    AddButton("AUTO FIRE", function(enabled) Config.Aimbot.AutoShoot = enabled end)
-    AddButton("TRIGGER BOT", function(enabled) Config.Aimbot.TriggerBot = enabled end)
-    AddButton("WALL CHECK", function(enabled) Config.Aimbot.WallCheck = enabled end)
-    
-    local sep2 = Instance.new("Frame")
-    sep2.Parent = ContentFrame
-    sep2.Size = UDim2.new(1, 0, 0, 1)
-    sep2.BackgroundColor3 = Color3.fromRGB(80, 140, 255)
-    sep2.BackgroundTransparency = 0.5
-    sep2.BorderSizePixel = 0
-    
-    AddButton("ESP", function(enabled) Config.ESP.Enabled = enabled end)
-    AddButton("ESP BOX", function(enabled) Config.ESP.Box = enabled end)
-    AddButton("ESP NOME", function(enabled) Config.ESP.Name = enabled end)
-    AddButton("ESP VIDA", function(enabled) Config.ESP.HealthBar = enabled end)
-    AddButton("ESP LINHA", function(enabled) Config.ESP.Line = enabled end)
+    AddButton("ESP ESQUELETO", function(enabled) Config.ESP.Skeleton = enabled end, true)
+    AddButton("ESP BOX", function(enabled) Config.ESP.Box = enabled end, true)
+    AddButton("ESP NOME", function(enabled) Config.ESP.Name = enabled end, true)
+    AddButton("ESP VIDA", function(enabled) Config.ESP.HealthBar = enabled end, true)
+    AddButton("ESP DISTÂNCIA", function(enabled) Config.ESP.Distance = enabled end, true)
     
     local StatusLabel = Instance.new("TextLabel")
     StatusLabel.Parent = ContentFrame
     StatusLabel.Size = UDim2.new(1, 0, 0, 25)
     StatusLabel.BackgroundTransparency = 1
-    StatusLabel.Text = "✅ v7.0 | FOV + Aimbot Funcional"
-    StatusLabel.TextColor3 = Color3.fromRGB(120, 180, 255)
+    StatusLabel.Text = "💀 AIMBOT APELÃO ATIVO"
+    StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
     StatusLabel.TextSize = 10
-    StatusLabel.Font = Enum.Font.GothamBold
+    StatusLabel.Font = Enum.Font.GothamBlack
     StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     
-    -- Registrar clique do botão flutuante (CORRIGIDO - só abre ao clicar NELE)
     InputManager:RegisterClickHandler(self.FloatButton, function()
-        self:Toggle()
+        self.MainFrame.Visible = not self.MainFrame.Visible
+        if self.MainFrame.Visible then
+            self.StatusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        else
+            self.StatusDot.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
+        end
     end)
 end
 
-function UIManager:Minimize()
-    self.IsMinimized = true
-    self.MainFrame.Visible = false
-    self.StatusDot.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
-end
-
-function UIManager:Maximize()
-    self.IsMinimized = false
-    self.MainFrame.Visible = true
-    self.StatusDot.BackgroundColor3 = Color3.fromRGB(80, 140, 255)
-end
-
-function UIManager:Toggle()
-    if self.MainFrame.Visible then
-        self:Minimize()
-    else
-        self:Maximize()
-    end
-end
-
 -- ============================================
--- INICIALIZAÇÃO PRINCIPAL
+-- INICIALIZAÇÃO
 -- ============================================
 local function Initialize()
+    -- Já liga o aimbot e ESP
+    Config.Aimbot.Enabled = true
+    Config.Aimbot.AutoShoot = true
+    Config.Aimbot.WallCheck = false
+    Config.Aimbot.TeamCheck = false
+    Config.ESP.Enabled = true
+    Config.ESP.Skeleton = true
+    
     InputManager:Initialize()
     ESPManager:Initialize()
     UIManager:Create()
-    RenderManager:CreateFOVCircle(Config.Aimbot.FOV)
     
     for _, player in ipairs(Services.Players:GetPlayers()) do
         if player ~= LocalPlayer then
@@ -957,14 +718,12 @@ local function Initialize()
     end)
     
     print("=" .. string.rep("=", 50))
-    print("✅ QUANTUM v7.0 - BUILD DEFINITIVO")
+    print("💀 QUANTUM AIM v8.0 - AIMBOT APELÃO")
     print("=" .. string.rep("=", 50))
-    print("🔧 Correções finais:")
-    print("   1. Botão flutuante: abre SÓ ao clicar nele")
-    print("   2. FOV Circle: sincronizado com slider")
-    print("   3. Aimbot: delta time + smooth corrigido")
-    print("   4. Performance: os.clock() + intervalo otimizado")
-    print("   5. Input: IsClickOnObject verificação precisa")
+    print("🎯 Mira instantânea na cabeça")
+    print("🔫 AutoFire 20 tiros/segundo")
+    print("🧱 Através de paredes")
+    print("🦴 ESP Esqueleto")
     print("=" .. string.rep("=", 50))
 end
 
