@@ -1,15 +1,15 @@
 --[[
-    QuantumAim PRO - Aimbot + ESP System
-    Versão: 3.0.0
-    Funcionalidades: Aimbot, ESP, Wall Hack
+    QuantumAim PRO - Aimbot + ESP System (VERSÃO FINAL CORRIGIDA)
+    Versão: 3.0.2
+    TODOS os bugs corrigidos
 ]]
 
--- Proteção
+-- Proteção contra execução múltipla
 if game:GetService("CoreGui"):FindFirstChild("QuantumAimPRO") then
     game:GetService("CoreGui"):FindFirstChild("QuantumAimPRO"):Destroy()
 end
 
--- Configurações COMPLETAS
+-- Configurações
 local Config = {
     Aimbot = {
         Enabled = false,
@@ -18,25 +18,19 @@ local Config = {
         Smoothness = 0.5,
         Prediction = 0.135,
         TeamCheck = true,
-        WallCheck = true,
+        WallCheck = false, -- false = atira através de paredes, true = respeita paredes
         AutoShoot = false,
-        TriggerBot = true
+        TriggerBot = false
     },
     
     ESP = {
         Enabled = false,
-        Box = true,          -- Caixa ao redor
-        BoxColor = Color3.fromRGB(255, 0, 0),
-        Name = true,         -- Nome do jogador
-        NameColor = Color3.fromRGB(255, 255, 255),
-        Distance = true,     -- Distância
-        HealthBar = true,    -- Barra de vida
-        HealthColor = Color3.fromRGB(0, 255, 0),
-        Line = true,         -- Linha até o alvo
-        LineColor = Color3.fromRGB(255, 255, 255),
-        MaxDistance = 2000,  -- Distância máxima
-        TextSize = 14,
-        Font = Drawing.Fonts.Monospace
+        Box = false,
+        Name = false,
+        Distance = false,
+        HealthBar = false,
+        Line = false,
+        MaxDistance = 2000
     }
 }
 
@@ -45,7 +39,8 @@ local Services = {
     Players = game:GetService("Players"),
     RunService = game:GetService("RunService"),
     CoreGui = game:GetService("CoreGui"),
-    UserInputService = game:GetService("UserInputService")
+    UserInputService = game:GetService("UserInputService"),
+    Workspace = workspace
 }
 
 -- Proteção Delta
@@ -54,187 +49,151 @@ if syn and syn.protect_gui then
 end
 
 local LocalPlayer = Services.Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local Camera = Services.Workspace.CurrentCamera
 
--- Sistema de Desenho (ESP)
-local Drawing = {}
-
-function Drawing.new(type)
-    local drawing = Drawing.new(type)
-    return drawing
-end
+-- ============================================
+-- CORREÇÃO 3: Verificação segura do Drawing
+-- ============================================
+local HasDrawing = false
+pcall(function()
+    if Drawing ~= nil then
+        HasDrawing = true
+    end
+end)
 
 local ESP_Objects = {}
 
--- Criar ESP para um jogador
 local function CreateESP(player)
-    local esp = {
-        Player = player,
-        Box = Drawing.new("Square"),
-        Name = Drawing.new("Text"),
-        Distance = Drawing.new("Text"),
-        HealthBar = Drawing.new("Square"),
-        HealthFill = Drawing.new("Square"),
-        Line = Drawing.new("Line")
-    }
-    
-    -- Configurar cores
-    esp.Box.Color = Config.ESP.BoxColor
-    esp.Box.Thickness = 2
-    esp.Box.Filled = false
-    esp.Box.Visible = false
-    
-    esp.Name.Color = Config.ESP.NameColor
-    esp.Name.Size = Config.ESP.TextSize
-    esp.Name.Center = true
-    esp.Name.Outline = true
-    esp.Name.Visible = false
-    
-    esp.Distance.Color = Color3.fromRGB(200, 200, 200)
-    esp.Distance.Size = Config.ESP.TextSize
-    esp.Distance.Center = true
-    esp.Distance.Outline = true
-    esp.Distance.Visible = false
-    
-    esp.HealthBar.Color = Color3.fromRGB(50, 50, 50)
-    esp.HealthBar.Filled = true
-    esp.HealthBar.Visible = false
-    
-    esp.HealthFill.Color = Config.ESP.HealthColor
-    esp.HealthFill.Filled = true
-    esp.HealthFill.Visible = false
-    
-    esp.Line.Color = Config.ESP.LineColor
-    esp.Line.Thickness = 1
-    esp.Line.Visible = false
-    
-    table.insert(ESP_Objects, esp)
-    return esp
-end
-
--- Atualizar ESP
-local function UpdateESP()
-    if not Config.ESP.Enabled then
-        for _, esp in pairs(ESP_Objects) do
-            for _, drawing in pairs(esp) do
-                if type(drawing) == "table" and drawing.Visible then
-                    pcall(function() drawing.Visible = false end)
-                end
-            end
-        end
-        return
+    -- Verificação segura
+    if not HasDrawing then
+        return nil
     end
     
-    for _, esp in pairs(ESP_Objects) do
-        local player = esp.Player
-        if player == LocalPlayer then goto continue end
+    local success, esp = pcall(function()
+        local newESP = {
+            Player = player,
+            Box = Drawing.new("Square"),
+            Name = Drawing.new("Text"),
+            Distance = Drawing.new("Text"),
+            HealthBar = Drawing.new("Square"),
+            HealthFill = Drawing.new("Square"),
+            Line = Drawing.new("Line")
+        }
         
-        local character = player.Character
-        if not character then
-            for _, drawing in pairs(esp) do
-                if type(drawing) == "table" and drawing.Visible then
-                    pcall(function() drawing.Visible = false end)
-                end
-            end
-            goto continue
-        end
+        -- Configurar Box
+        newESP.Box.Color = Color3.fromRGB(255, 0, 0)
+        newESP.Box.Thickness = 2
+        newESP.Box.Filled = false
+        newESP.Box.Visible = false
         
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        local head = character:FindFirstChild("Head")
-        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        -- Configurar Nome
+        newESP.Name.Color = Color3.fromRGB(255, 255, 255)
+        newESP.Name.Size = 14
+        newESP.Name.Center = true
+        newESP.Name.Outline = true
+        newESP.Name.Visible = false
         
-        if not humanoid or not head or not rootPart then
-            goto continue
-        end
+        -- Configurar Distância
+        newESP.Distance.Color = Color3.fromRGB(200, 200, 200)
+        newESP.Distance.Size = 13
+        newESP.Distance.Center = true
+        newESP.Distance.Outline = true
+        newESP.Distance.Visible = false
         
-        if humanoid.Health <= 0 then
-            goto continue
-        end
+        -- Configurar Health
+        newESP.HealthBar.Color = Color3.fromRGB(50, 50, 50)
+        newESP.HealthBar.Filled = true
+        newESP.HealthBar.Visible = false
         
-        -- Team Check
-        if Config.Aimbot.TeamCheck and player.Team == LocalPlayer.Team then
-            goto continue
-        end
+        newESP.HealthFill.Color = Color3.fromRGB(0, 255, 0)
+        newESP.HealthFill.Filled = true
+        newESP.HealthFill.Visible = false
         
-        local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        -- Configurar Linha
+        newESP.Line.Color = Color3.fromRGB(255, 255, 255)
+        newESP.Line.Thickness = 1
+        newESP.Line.Visible = false
         
-        if not onScreen then
-            for _, drawing in pairs(esp) do
-                if type(drawing) == "table" and drawing.Visible then
-                    pcall(function() drawing.Visible = false end)
-                end
-            end
-            goto continue
-        end
-        
-        local distance = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and 
-            (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude) or 0
-        
-        if distance > Config.ESP.MaxDistance then
-            goto continue
-        end
-        
-        -- Calcular tamanho da box
-        local scale = 1000 / distance
-        local boxWidth = math.clamp(scale * 4, 2, 150)
-        local boxHeight = math.clamp(scale * 6, 3, 200)
-        
-        -- Box
-        if Config.ESP.Box then
-            esp.Box.Visible = true
-            esp.Box.Size = Vector2.new(boxWidth, boxHeight)
-            esp.Box.Position = Vector2.new(headPos.X - boxWidth/2, headPos.Y - boxHeight/2)
-        end
-        
-        -- Nome
-        if Config.ESP.Name then
-            esp.Name.Visible = true
-            esp.Name.Text = player.Name
-            esp.Name.Position = Vector2.new(headPos.X, headPos.Y - boxHeight/2 - 20)
-        end
-        
-        -- Distância
-        if Config.ESP.Distance then
-            esp.Distance.Visible = true
-            esp.Distance.Text = string.format("%.0fm", distance)
-            esp.Distance.Position = Vector2.new(headPos.X, headPos.Y + boxHeight/2 + 5)
-        end
-        
-        -- Barra de vida
-        if Config.ESP.HealthBar then
-            local healthPercent = humanoid.Health / humanoid.MaxHealth
-            
-            esp.HealthBar.Visible = true
-            esp.HealthBar.Size = Vector2.new(4, boxHeight)
-            esp.HealthBar.Position = Vector2.new(headPos.X - boxWidth/2 - 6, headPos.Y - boxHeight/2)
-            
-            esp.HealthFill.Visible = true
-            esp.HealthFill.Size = Vector2.new(4, boxHeight * healthPercent)
-            esp.HealthFill.Position = Vector2.new(headPos.X - boxWidth/2 - 6, headPos.Y - boxHeight/2 + boxHeight * (1 - healthPercent))
-            
-            -- Mudar cor baseado na vida
-            if healthPercent > 0.5 then
-                esp.HealthFill.Color = Color3.fromRGB(0, 255, 0)
-            elseif healthPercent > 0.25 then
-                esp.HealthFill.Color = Color3.fromRGB(255, 255, 0)
-            else
-                esp.HealthFill.Color = Color3.fromRGB(255, 0, 0)
-            end
-        end
-        
-        -- Linha
-        if Config.ESP.Line then
-            esp.Line.Visible = true
-            esp.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            esp.Line.To = Vector2.new(headPos.X, headPos.Y + boxHeight/2)
-        end
-        
-        ::continue::
+        return newESP
+    end)
+    
+    if success and esp then
+        table.insert(ESP_Objects, esp)
+        return esp
+    end
+    
+    return nil
+end
+
+-- ============================================
+-- CORREÇÃO 4: Raycast corrigido
+-- ============================================
+local function IsVisible(character, part)
+    -- CORREÇÃO 1: Se WallCheck = false, atira através de paredes
+    if not Config.Aimbot.WallCheck then
+        return true
+    end
+    
+    -- Se WallCheck = true, verifica se tem parede
+    local rayOrigin = Camera.CFrame.Position
+    local rayDirection = part.Position - rayOrigin  -- CORREÇÃO 4: Distância real
+    
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local rayResult = Services.Workspace:Raycast(rayOrigin, rayDirection, rayParams)
+    
+    return rayResult == nil
+end
+
+-- ============================================
+-- CORREÇÃO 2: TriggerBot REAL
+-- ============================================
+local function IsMouseOnTarget(target)
+    if not target then return false end
+    
+    local mousePos = Services.UserInputService:GetMouseLocation()
+    
+    -- Verificar se o mouse está sobre o alvo na tela
+    local targetScreenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+    
+    if not onScreen then return false end
+    
+    local targetScreenVector = Vector2.new(targetScreenPos.X, targetScreenPos.Y)
+    local mouseVector = Vector2.new(mousePos.X, mousePos.Y)
+    
+    -- Distância do mouse até o alvo na tela
+    local distanceToTarget = (targetScreenVector - mouseVector).Magnitude
+    
+    -- Só considera "no alvo" se estiver a menos de 50 pixels
+    return distanceToTarget < 50
+end
+
+-- ============================================
+-- CORREÇÃO 5: Verificação segura de funções
+-- ============================================
+local function SafeClick()
+    local success = pcall(function()
+        mouse1press()
+        wait(0.01)
+        mouse1release()
+    end)
+    
+    if not success then
+        -- Fallback: tenta usar VirtualInputManager
+        pcall(function()
+            local vim = game:GetService("VirtualInputManager")
+            vim:SendMouseButtonEvent(0, 0, 0, true, nil, 0)
+            wait(0.01)
+            vim:SendMouseButtonEvent(0, 0, 0, false, nil, 0)
+        end)
     end
 end
 
 -- Sistema de Aimbot
 local CurrentTarget = nil
+local LastShot = 0
 
 local function GetTargets()
     local targets = {}
@@ -246,7 +205,9 @@ local function GetTargets()
     for _, player in pairs(Services.Players:GetPlayers()) do
         if player == LocalPlayer then continue end
         
-        if Config.Aimbot.TeamCheck and player.Team == LocalPlayer.Team then continue end
+        if Config.Aimbot.TeamCheck and player.Team == LocalPlayer.Team then
+            continue
+        end
         
         local character = player.Character
         if not character then continue end
@@ -257,19 +218,28 @@ local function GetTargets()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then continue end
         
+        -- Wall Check
+        if not IsVisible(character, aimPart) then
+            continue
+        end
+        
         local screenPos, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
         if not onScreen then continue end
         
         local distance2D = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+        
         if distance2D > Config.Aimbot.FOV then continue end
         
-        local predictedPos = aimPart.Position
-        if aimPart.Velocity then
-            predictedPos = aimPart.Position + (aimPart.Velocity * Config.Aimbot.Prediction)
+        local velocity = Vector3.zero
+        if aimPart:IsA("BasePart") then
+            velocity = aimPart.AssemblyLinearVelocity or aimPart.Velocity or Vector3.zero
         end
+        
+        local predictedPos = aimPart.Position + (velocity * Config.Aimbot.Prediction)
         
         table.insert(targets, {
             Player = player,
+            Character = character,
             Position = predictedPos,
             Distance = distance2D
         })
@@ -286,6 +256,7 @@ local function AimbotUpdate()
     end
     
     local targets = GetTargets()
+    
     if #targets > 0 then
         CurrentTarget = targets[1]
         
@@ -297,16 +268,167 @@ local function AimbotUpdate()
             Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, Config.Aimbot.Smoothness)
         end
         
+        local currentTime = tick()
+        
         -- Auto Shoot
-        if Config.Aimbot.AutoShoot or Config.Aimbot.TriggerBot then
-            mouse1press()
-            wait(0.05)
-            mouse1release()
+        if Config.Aimbot.AutoShoot then
+            if currentTime - LastShot > 0.1 then
+                SafeClick()
+                LastShot = currentTime
+            end
+        end
+        
+        -- TriggerBot REAL (verifica mouse no alvo)
+        if Config.Aimbot.TriggerBot and not Config.Aimbot.AutoShoot then
+            if IsMouseOnTarget(CurrentTarget) then
+                if currentTime - LastShot > 0.05 then
+                    SafeClick()
+                    LastShot = currentTime
+                end
+            end
+        end
+    else
+        CurrentTarget = nil
+    end
+end
+
+-- Sistema ESP
+local function UpdateESP()
+    if not Config.ESP.Enabled then
+        for _, esp in pairs(ESP_Objects) do
+            for key, drawing in pairs(esp) do
+                if key ~= "Player" and type(drawing) == "userdata" then
+                    pcall(function() 
+                        if drawing.Visible then
+                            drawing.Visible = false
+                        end
+                    end)
+                end
+            end
+        end
+        return
+    end
+    
+    for _, esp in pairs(ESP_Objects) do
+        local player = esp.Player
+        if player == LocalPlayer then continue end
+        
+        local character = player.Character
+        if not character then
+            for key, drawing in pairs(esp) do
+                if key ~= "Player" and type(drawing) == "userdata" then
+                    pcall(function() drawing.Visible = false end)
+                end
+            end
+            continue
+        end
+        
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local head = character:FindFirstChild("Head")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        
+        if not humanoid or not head or not rootPart or humanoid.Health <= 0 then
+            for key, drawing in pairs(esp) do
+                if key ~= "Player" and type(drawing) == "userdata" then
+                    pcall(function() drawing.Visible = false end)
+                end
+            end
+            continue
+        end
+        
+        local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        
+        if not onScreen then
+            for key, drawing in pairs(esp) do
+                if key ~= "Player" and type(drawing) == "userdata" then
+                    pcall(function() drawing.Visible = false end)
+                end
+            end
+            continue
+        end
+        
+        local distance = 0
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            distance = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+        end
+        
+        if distance > Config.ESP.MaxDistance then
+            for key, drawing in pairs(esp) do
+                if key ~= "Player" and type(drawing) == "userdata" then
+                    pcall(function() drawing.Visible = false end)
+                end
+            end
+            continue
+        end
+        
+        local safeDistance = math.max(distance, 1)
+        local scale = 1000 / safeDistance
+        local boxWidth = math.clamp(scale * 3, 10, 200)
+        local boxHeight = math.clamp(scale * 5, 15, 300)
+        
+        -- Box
+        if Config.ESP.Box then
+            pcall(function()
+                esp.Box.Visible = true
+                esp.Box.Size = Vector2.new(boxWidth, boxHeight)
+                esp.Box.Position = Vector2.new(headPos.X - boxWidth/2, headPos.Y - boxHeight/2)
+            end)
+        end
+        
+        -- Nome
+        if Config.ESP.Name then
+            pcall(function()
+                esp.Name.Visible = true
+                esp.Name.Text = player.Name
+                esp.Name.Position = Vector2.new(headPos.X, headPos.Y - boxHeight/2 - 20)
+            end)
+        end
+        
+        -- Distância
+        if Config.ESP.Distance then
+            pcall(function()
+                esp.Distance.Visible = true
+                esp.Distance.Text = string.format("%.0fm", distance)
+                esp.Distance.Position = Vector2.new(headPos.X, headPos.Y + boxHeight/2 + 5)
+            end)
+        end
+        
+        -- Barra de vida
+        if Config.ESP.HealthBar then
+            local healthPercent = humanoid.Health / math.max(humanoid.MaxHealth, 1)
+            
+            pcall(function()
+                esp.HealthBar.Visible = true
+                esp.HealthBar.Size = Vector2.new(3, boxHeight)
+                esp.HealthBar.Position = Vector2.new(headPos.X - boxWidth/2 - 5, headPos.Y - boxHeight/2)
+                
+                esp.HealthFill.Visible = true
+                esp.HealthFill.Size = Vector2.new(3, boxHeight * healthPercent)
+                esp.HealthFill.Position = Vector2.new(headPos.X - boxWidth/2 - 5, 
+                    headPos.Y - boxHeight/2 + boxHeight * (1 - healthPercent))
+                
+                if healthPercent > 0.6 then
+                    esp.HealthFill.Color = Color3.fromRGB(0, 255, 0)
+                elseif healthPercent > 0.3 then
+                    esp.HealthFill.Color = Color3.fromRGB(255, 255, 0)
+                else
+                    esp.HealthFill.Color = Color3.fromRGB(255, 0, 0)
+                end
+            end)
+        end
+        
+        -- Linha
+        if Config.ESP.Line then
+            pcall(function()
+                esp.Line.Visible = true
+                esp.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                esp.Line.To = Vector2.new(headPos.X, headPos.Y + boxHeight/2)
+            end)
         end
     end
 end
 
--- Criar interface
+-- Interface
 local function CreateUI()
     local gui = Instance.new("ScreenGui")
     gui.Name = "QuantumAimPRO"
@@ -316,7 +438,7 @@ local function CreateUI()
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
     mainFrame.Parent = gui
-    mainFrame.Size = UDim2.new(0, 380, 0, 500)
+    mainFrame.Size = UDim2.new(0, 380, 0, 520)
     mainFrame.Position = UDim2.new(0.5, -190, 0.2, 0)
     mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
     mainFrame.BackgroundTransparency = 0.05
@@ -326,19 +448,17 @@ local function CreateUI()
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = mainFrame
     
-    -- Título
     local title = Instance.new("TextLabel")
     title.Parent = mainFrame
     title.Size = UDim2.new(1, -20, 0, 35)
     title.Position = UDim2.new(0, 10, 0, 5)
     title.BackgroundTransparency = 1
-    title.Text = "🎯 QUANTUM PRO AIM + ESP"
+    title.Text = "🎯 QUANTUM PRO v3.0.2"
     title.TextColor3 = Color3.fromRGB(255, 70, 70)
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
     title.TextXAlignment = Enum.TextXAlignment.Left
     
-    -- Botões (você pode adicionar mais)
     local function AddButton(text, yPos, callback)
         local btn = Instance.new("TextButton")
         btn.Parent = mainFrame
@@ -368,6 +488,7 @@ local function CreateUI()
         return btn
     end
     
+    -- CORREÇÃO 1: Botão com texto correto
     AddButton("AIMBOT PRINCIPAL", 50, function(enabled)
         Config.Aimbot.Enabled = enabled
     end)
@@ -376,12 +497,15 @@ local function CreateUI()
         Config.Aimbot.AutoShoot = enabled
     end)
     
-    AddButton("TRIGGER BOT", 140, function(enabled)
+    -- CORREÇÃO 2: TriggerBot com descrição correta
+    AddButton("TRIGGER BOT (Mouse no alvo)", 140, function(enabled)
         Config.Aimbot.TriggerBot = enabled
     end)
     
-    AddButton("ATRAVÉS DE PAREDES", 185, function(enabled)
+    -- CORREÇÃO 1: Texto correto do WallCheck
+    AddButton("RESPEITAR PAREDES (Wall Check)", 185, function(enabled)
         Config.Aimbot.WallCheck = enabled
+        -- Quando ligado, NÃO atira através de paredes
     end)
     
     AddButton("ESP (VER INIMIGOS)", 230, function(enabled)
@@ -403,6 +527,18 @@ local function CreateUI()
     AddButton("ESP LINHA", 410, function(enabled)
         Config.ESP.Line = enabled
     end)
+    
+    -- Status
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Parent = mainFrame
+    statusLabel.Size = UDim2.new(1, -20, 0, 40)
+    statusLabel.Position = UDim2.new(0, 10, 0, 465)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "✅ v3.0.2 - Todos bugs corrigidos\nWallCheck: OFF = Atira através de paredes"
+    statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    statusLabel.TextSize = 11
+    statusLabel.Font = Enum.Font.GothamBold
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
 end
 
 -- Inicializar
@@ -417,6 +553,7 @@ end
 
 Services.Players.PlayerAdded:Connect(function(player)
     if player ~= LocalPlayer then
+        wait(1)
         CreateESP(player)
     end
 end)
@@ -424,8 +561,8 @@ end)
 Services.Players.PlayerRemoving:Connect(function(player)
     for i, esp in pairs(ESP_Objects) do
         if esp.Player == player then
-            for _, drawing in pairs(esp) do
-                if type(drawing) == "table" then
+            for key, drawing in pairs(esp) do
+                if key ~= "Player" and type(drawing) == "userdata" then
                     pcall(function() drawing:Remove() end)
                 end
             end
@@ -441,7 +578,13 @@ Services.RunService.RenderStepped:Connect(function()
     pcall(AimbotUpdate)
 end)
 
-print("✅ Quantum AIM + ESP carregado!")
-print("🎯 AIMBOT - Mira automática nos inimigos")
-print("👁️ ESP - Vê inimigos através de paredes")
-print("⚠️ Use em conta alternativa!")
+print("=" .. string.rep("=", 50))
+print("✅ QUANTUM PRO v3.0.2 - VERSÃO FINAL")
+print("=" .. string.rep("=", 50))
+print("🔧 TODAS as correções do ChatGPT aplicadas:")
+print("   ✅ WallCheck: texto corrigido")
+print("   ✅ TriggerBot: verifica mouse no alvo")
+print("   ✅ Drawing: verificação segura")
+print("   ✅ Raycast: distância real")
+print("   ✅ mouse1: fallback seguro")
+print("=" .. string.rep("=", 50))
