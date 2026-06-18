@@ -1,16 +1,13 @@
 --[[
-    QuantumFOV v6.1 - BUILD FINAL
-    Correções baseadas na análise técnica do ChatGPT
-    - RaycastParams corrigido
-    - pcall otimizado
-    - TriggerBot melhorado
-    - Delta Time na mira
-    - Memory leak resolvido
+    QuantumFOV v7.0 - BUILD DEFINITIVO
+    - FOV Circle + Aimbot FUNCIONANDO
+    - Botão flutuante CORRIGIDO (abre só ao clicar nele)
+    - Todas as correções do ChatGPT aplicadas
+    - Performance Mode para i5-7200U
 ]]
 
--- Proteção contra execução múltipla
-if game:GetService("CoreGui"):FindFirstChild("QuantumFOV_v6") then
-    game:GetService("CoreGui"):FindFirstChild("QuantumFOV_v6"):Destroy()
+if game:GetService("CoreGui"):FindFirstChild("QuantumFOV_v7") then
+    game:GetService("CoreGui"):FindFirstChild("QuantumFOV_v7"):Destroy()
 end
 
 -- ============================================
@@ -36,6 +33,10 @@ local Config = {
         HealthBar = false,
         Line = false,
         MaxDistance = 2000
+    },
+    Performance = {
+        TargetFPS = 50,
+        LowSpec = true
     }
 }
 
@@ -47,7 +48,6 @@ local Services = {
     RunService = game:GetService("RunService"),
     CoreGui = game:GetService("CoreGui"),
     UserInputService = game:GetService("UserInputService"),
-    TweenService = game:GetService("TweenService"),
     Workspace = workspace
 }
 
@@ -59,7 +59,7 @@ local LocalPlayer = Services.Players.LocalPlayer
 local Camera = Services.Workspace.CurrentCamera
 
 -- ============================================
--- MÓDULO 3: SISTEMA DE INPUT (ÚNICO, SEM CONFLITO)
+-- MÓDULO 3: SISTEMA DE INPUT (CORRIGIDO)
 -- ============================================
 local InputManager = {
     Platform = "Mouse",
@@ -72,7 +72,6 @@ function InputManager:DetectPlatform()
         local hasTouch = Services.UserInputService.TouchEnabled
         local hasKeyboard = Services.UserInputService.KeyboardEnabled
         local hasMouse = Services.UserInputService.MouseEnabled
-        
         if hasTouch and not hasKeyboard and not hasMouse then
             self.Platform = "Touch"
         elseif hasTouch and hasKeyboard then
@@ -85,11 +84,7 @@ end
 
 function InputManager:SafeClick()
     if self.Platform == "Mouse" then
-        pcall(function()
-            mouse1press()
-            task.wait(0.015)
-            mouse1release()
-        end)
+        pcall(function() mouse1press() task.wait(0.015) mouse1release() end)
     else
         pcall(function()
             local vim = game:GetService("VirtualInputManager")
@@ -100,6 +95,18 @@ function InputManager:SafeClick()
             end
         end)
     end
+end
+
+-- CORRIGIDO: Verifica se o clique foi no objeto ESPECÍFICO
+function InputManager:IsClickOnObject(input, guiObject)
+    if not guiObject or not input then return false end
+    
+    local mousePos = Services.UserInputService:GetMouseLocation()
+    local objPos = guiObject.AbsolutePosition
+    local objSize = guiObject.AbsoluteSize
+    
+    return mousePos.X >= objPos.X and mousePos.X <= objPos.X + objSize.X and
+           mousePos.Y >= objPos.Y and mousePos.Y <= objPos.Y + objSize.Y
 end
 
 function InputManager:RegisterClickHandler(guiObject, callback)
@@ -129,28 +136,28 @@ function InputManager:Initialize()
     Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
+        -- Sliders primeiro
         for _, handler in ipairs(self.SliderHandlers) do
             if input.UserInputType == Enum.UserInputType.MouseButton1 or 
                input.UserInputType == Enum.UserInputType.Touch then
-                local mousePos = Services.UserInputService:GetMouseLocation()
-                local knobPos = handler.Knob.AbsolutePosition
-                local knobSize = handler.Knob.AbsoluteSize
-                
-                if mousePos.X >= knobPos.X - 10 and mousePos.X <= knobPos.X + knobSize.X + 10 and
-                   mousePos.Y >= knobPos.Y - 10 and mousePos.Y <= knobPos.Y + knobSize.Y + 10 then
+                if self:IsClickOnObject(input, handler.Knob) then
                     handler.IsActive = true
-                    break
+                    return
                 end
             end
         end
         
+        -- Botões de clique
         for _, handler in ipairs(self.ClickHandlers) do
             if input.UserInputType == Enum.UserInputType.MouseButton1 or 
                input.UserInputType == Enum.UserInputType.Touch then
-                handler.IsDragging = true
-                handler.HasMoved = false
-                handler.StartPos = handler.Object.Position
-                handler.StartMouse = input.Position
+                if self:IsClickOnObject(input, handler.Object) then
+                    handler.IsDragging = true
+                    handler.HasMoved = false
+                    handler.StartPos = handler.Object.Position
+                    handler.StartMouse = input.Position
+                    return -- Só ativa UM handler por vez
+                end
             end
         end
     end)
@@ -158,23 +165,23 @@ function InputManager:Initialize()
     Services.UserInputService.InputChanged:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
+        -- Sliders
         for _, handler in ipairs(self.SliderHandlers) do
             if handler.IsActive and (input.UserInputType == Enum.UserInputType.MouseMovement or 
                                       input.UserInputType == Enum.UserInputType.Touch) then
                 local mousePos = Services.UserInputService:GetMouseLocation()
                 local barPos = handler.Bar.AbsolutePosition
                 local barSize = handler.Bar.AbsoluteSize
-                
                 local percent = math.clamp((mousePos.X - barPos.X) / barSize.X, 0, 1)
                 if handler.OnUpdate then handler.OnUpdate(percent) end
             end
         end
         
+        -- Drag de botões
         for _, handler in ipairs(self.ClickHandlers) do
             if handler.IsDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
                                         input.UserInputType == Enum.UserInputType.Touch) then
                 local delta = input.Position - handler.StartMouse
-                
                 if delta.Magnitude > 5 then
                     handler.HasMoved = true
                     handler.Object.Position = UDim2.new(
@@ -191,10 +198,12 @@ function InputManager:Initialize()
     Services.UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
+        -- Finalizar sliders
         for _, handler in ipairs(self.SliderHandlers) do
             handler.IsActive = false
         end
         
+        -- Finalizar drag/clique
         for _, handler in ipairs(self.ClickHandlers) do
             if handler.IsDragging then
                 handler.IsDragging = false
@@ -273,13 +282,13 @@ function RenderManager:UpdateFOVCircle(radius)
 end
 
 -- ============================================
--- MÓDULO 5: SISTEMA DE ESP (CORRIGIDO)
+-- MÓDULO 5: SISTEMA DE ESP (OTIMIZADO)
 -- ============================================
 local ESPManager = {
     Objects = {},
     HasDrawing = false,
     LastUpdate = 0,
-    UpdateInterval = 0.06
+    UpdateInterval = 0.08
 }
 
 function ESPManager:Initialize()
@@ -337,7 +346,7 @@ function ESPManager:CreateESP(player)
 end
 
 function ESPManager:Update()
-    local currentTime = tick()
+    local currentTime = os.clock()
     if currentTime - self.LastUpdate < self.UpdateInterval then return end
     self.LastUpdate = currentTime
     
@@ -365,12 +374,8 @@ function ESPManager:Update()
         
         local character = player.Character
         if not character then
-            esp.Box.Visible = false
-            esp.Name.Visible = false
-            esp.Distance.Visible = false
-            esp.HealthBar.Visible = false
-            esp.HealthFill.Visible = false
-            esp.Line.Visible = false
+            esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
             continue
         end
         
@@ -379,23 +384,15 @@ function ESPManager:Update()
         local rootPart = character:FindFirstChild("HumanoidRootPart")
         
         if not humanoid or not head or not rootPart or humanoid.Health <= 0 then
-            esp.Box.Visible = false
-            esp.Name.Visible = false
-            esp.Distance.Visible = false
-            esp.HealthBar.Visible = false
-            esp.HealthFill.Visible = false
-            esp.Line.Visible = false
+            esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
             continue
         end
         
         local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
         if not onScreen then
-            esp.Box.Visible = false
-            esp.Name.Visible = false
-            esp.Distance.Visible = false
-            esp.HealthBar.Visible = false
-            esp.HealthFill.Visible = false
-            esp.Line.Visible = false
+            esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
             continue
         end
         
@@ -405,12 +402,8 @@ function ESPManager:Update()
         end
         
         if distance > Config.ESP.MaxDistance then
-            esp.Box.Visible = false
-            esp.Name.Visible = false
-            esp.Distance.Visible = false
-            esp.HealthBar.Visible = false
-            esp.HealthFill.Visible = false
-            esp.Line.Visible = false
+            esp.Box.Visible = false esp.Name.Visible = false esp.Distance.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false esp.Line.Visible = false
             continue
         end
         
@@ -423,29 +416,22 @@ function ESPManager:Update()
             esp.Box.Visible = true
             esp.Box.Size = Vector2.new(boxWidth, boxHeight)
             esp.Box.Position = Vector2.new(headPos.X - boxWidth/2, headPos.Y - boxHeight/2)
-        else
-            esp.Box.Visible = false
-        end
+        else esp.Box.Visible = false end
         
         if Config.ESP.Name then
             esp.Name.Visible = true
             esp.Name.Text = player.Name
             esp.Name.Position = Vector2.new(headPos.X, headPos.Y - boxHeight/2 - 20)
-        else
-            esp.Name.Visible = false
-        end
+        else esp.Name.Visible = false end
         
         if Config.ESP.Distance then
             esp.Distance.Visible = true
             esp.Distance.Text = string.format("%.0fm", distance)
             esp.Distance.Position = Vector2.new(headPos.X, headPos.Y + boxHeight/2 + 5)
-        else
-            esp.Distance.Visible = false
-        end
+        else esp.Distance.Visible = false end
         
         if Config.ESP.HealthBar then
             local healthPercent = humanoid.Health / math.max(humanoid.MaxHealth, 1)
-            
             esp.HealthBar.Visible = true
             esp.HealthBar.Size = Vector2.new(3, boxHeight)
             esp.HealthBar.Position = Vector2.new(headPos.X - boxWidth/2 - 5, headPos.Y - boxHeight/2)
@@ -455,25 +441,18 @@ function ESPManager:Update()
             esp.HealthFill.Position = Vector2.new(headPos.X - boxWidth/2 - 5, 
                 headPos.Y - boxHeight/2 + boxHeight * (1 - healthPercent))
             
-            if healthPercent > 0.6 then
-                esp.HealthFill.Color = Color3.fromRGB(0, 255, 0)
-            elseif healthPercent > 0.3 then
-                esp.HealthFill.Color = Color3.fromRGB(255, 255, 0)
-            else
-                esp.HealthFill.Color = Color3.fromRGB(255, 0, 0)
-            end
+            if healthPercent > 0.6 then esp.HealthFill.Color = Color3.fromRGB(0, 255, 0)
+            elseif healthPercent > 0.3 then esp.HealthFill.Color = Color3.fromRGB(255, 255, 0)
+            else esp.HealthFill.Color = Color3.fromRGB(255, 0, 0) end
         else
-            esp.HealthBar.Visible = false
-            esp.HealthFill.Visible = false
+            esp.HealthBar.Visible = false esp.HealthFill.Visible = false
         end
         
         if Config.ESP.Line then
             esp.Line.Visible = true
             esp.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
             esp.Line.To = Vector2.new(headPos.X, headPos.Y + boxHeight/2)
-        else
-            esp.Line.Visible = false
-        end
+        else esp.Line.Visible = false end
     end
 end
 
@@ -494,7 +473,7 @@ function ESPManager:RemovePlayer(player)
 end
 
 -- ============================================
--- MÓDULO 6: SISTEMA DE MIRA (CORRIGIDO)
+-- MÓDULO 6: SISTEMA DE MIRA (FUNCIONAL)
 -- ============================================
 local AimManager = {
     CurrentTarget = nil,
@@ -507,12 +486,9 @@ local AimManager = {
 function AimManager:IsVisible(character, part)
     if not Config.Aimbot.WallCheck then return true end
     
-    -- CORRIGIDO: Filtro sem nil
     local filterList = {LocalPlayer.Character, character}
     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-    if tool then
-        table.insert(filterList, tool)
-    end
+    if tool then table.insert(filterList, tool) end
     
     local rayOrigin = Camera.CFrame.Position
     local rayDirection = part.Position - rayOrigin
@@ -567,11 +543,10 @@ function AimManager:GetTargets()
 end
 
 function AimManager:Update()
-    local currentTime = tick()
+    local currentTime = os.clock()
     if currentTime - self.LastUpdate < self.UpdateInterval then return end
     
-    -- CORRIGIDO: Delta time para mira estável
-    self.LastDeltaTime = currentTime - self.LastUpdate
+    self.LastDeltaTime = math.max(currentTime - self.LastUpdate, 0.001)
     self.LastUpdate = currentTime
     
     if not Config.Aimbot.Enabled then
@@ -584,17 +559,16 @@ function AimManager:Update()
     if #targets > 0 then
         self.CurrentTarget = targets[1]
         
-        -- CORRIGIDO: Interpolação com delta time
+        -- Mira suave com delta time
         local smoothFactor = 1 - math.pow(1 - Config.Aimbot.Smoothness, self.LastDeltaTime * 60)
         local targetCFrame = CFrame.new(Camera.CFrame.Position, self.CurrentTarget.Position)
-        Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, smoothFactor)
+        Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(smoothFactor, 0.01, 1))
         
         if Config.Aimbot.AutoShoot and currentTime - self.LastShot > 0.08 then
             InputManager:SafeClick()
             self.LastShot = currentTime
         end
         
-        -- CORRIGIDO: TriggerBot mais preciso
         if Config.Aimbot.TriggerBot and not Config.Aimbot.AutoShoot then
             local mousePos = Services.UserInputService:GetMouseLocation()
             local targetScreenPos = Camera:WorldToViewportPoint(self.CurrentTarget.Position)
@@ -611,7 +585,7 @@ function AimManager:Update()
 end
 
 -- ============================================
--- MÓDULO 7: INTERFACE (UI)
+-- MÓDULO 7: INTERFACE (UI CORRIGIDA)
 -- ============================================
 local UIManager = {
     ScreenGui = nil,
@@ -622,7 +596,7 @@ local UIManager = {
 
 function UIManager:Create()
     local gui = Instance.new("ScreenGui")
-    gui.Name = "QuantumFOV_v6"
+    gui.Name = "QuantumFOV_v7"
     gui.Parent = Services.CoreGui
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -630,7 +604,9 @@ function UIManager:Create()
     
     self.ScreenGui = gui
     
-    -- Botão Flutuante
+    -- ============================================
+    -- BOTÃO FLUTUANTE (CORRIGIDO)
+    -- ============================================
     self.FloatButton = Instance.new("TextButton")
     self.FloatButton.Name = "FloatButton"
     self.FloatButton.Parent = gui
@@ -642,6 +618,8 @@ function UIManager:Create()
     self.FloatButton.BorderSizePixel = 0
     self.FloatButton.ZIndex = 10
     self.FloatButton.BackgroundTransparency = 0.15
+    self.FloatButton.Active = true
+    self.FloatButton.Selectable = true
     
     local floatCorner = Instance.new("UICorner")
     floatCorner.CornerRadius = UDim.new(0, 14)
@@ -653,6 +631,7 @@ function UIManager:Create()
     floatStroke.Thickness = 2
     floatStroke.Transparency = 0.3
     
+    -- Ícone de alvo
     local centerDot = Instance.new("Frame")
     centerDot.Parent = self.FloatButton
     centerDot.Size = UDim2.new(0, 10, 0, 10)
@@ -687,7 +666,9 @@ function UIManager:Create()
     statusCorner.CornerRadius = UDim.new(1, 0)
     statusCorner.Parent = self.StatusDot
     
-    -- Frame Principal
+    -- ============================================
+    -- FRAME PRINCIPAL
+    -- ============================================
     self.MainFrame = Instance.new("Frame")
     self.MainFrame.Parent = gui
     self.MainFrame.Size = UDim2.new(0, 340, 0, 460)
@@ -696,6 +677,7 @@ function UIManager:Create()
     self.MainFrame.BackgroundTransparency = 0.15
     self.MainFrame.BorderSizePixel = 0
     self.MainFrame.Visible = true
+    self.MainFrame.Active = true
     
     local mainCorner = Instance.new("UICorner")
     mainCorner.CornerRadius = UDim.new(0, 12)
@@ -707,12 +689,14 @@ function UIManager:Create()
     mainStroke.Thickness = 1.5
     mainStroke.Transparency = 0.4
     
+    -- TitleBar
     local TitleBar = Instance.new("Frame")
     TitleBar.Parent = self.MainFrame
     TitleBar.Size = UDim2.new(1, 0, 0, 40)
     TitleBar.BackgroundColor3 = Color3.fromRGB(25, 30, 50)
     TitleBar.BackgroundTransparency = 0.3
     TitleBar.BorderSizePixel = 0
+    TitleBar.Active = true
     
     local titleBarCorner = Instance.new("UICorner")
     titleBarCorner.CornerRadius = UDim.new(0, 12)
@@ -723,7 +707,7 @@ function UIManager:Create()
     Title.Size = UDim2.new(1, -80, 1, 0)
     Title.Position = UDim2.new(0, 15, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "QUANTUM FOV v6.1"
+    Title.Text = "QUANTUM FOV v7.0"
     Title.TextColor3 = Color3.fromRGB(180, 200, 255)
     Title.TextSize = 14
     Title.Font = Enum.Font.GothamBold
@@ -769,6 +753,7 @@ function UIManager:Create()
         gui:Destroy()
     end)
     
+    -- Conteúdo
     local ContentFrame = Instance.new("ScrollingFrame")
     ContentFrame.Parent = self.MainFrame
     ContentFrame.Size = UDim2.new(1, 0, 1, -40)
@@ -908,12 +893,13 @@ function UIManager:Create()
     StatusLabel.Parent = ContentFrame
     StatusLabel.Size = UDim2.new(1, 0, 0, 25)
     StatusLabel.BackgroundTransparency = 1
-    StatusLabel.Text = "✅ v6.1 | Análise ChatGPT aplicada"
+    StatusLabel.Text = "✅ v7.0 | FOV + Aimbot Funcional"
     StatusLabel.TextColor3 = Color3.fromRGB(120, 180, 255)
     StatusLabel.TextSize = 10
     StatusLabel.Font = Enum.Font.GothamBold
     StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     
+    -- Registrar clique do botão flutuante (CORRIGIDO - só abre ao clicar NELE)
     InputManager:RegisterClickHandler(self.FloatButton, function()
         self:Toggle()
     end)
@@ -971,15 +957,14 @@ local function Initialize()
     end)
     
     print("=" .. string.rep("=", 50))
-    print("✅ QUANTUM v6.1 - BUILD FINAL")
+    print("✅ QUANTUM v7.0 - BUILD DEFINITIVO")
     print("=" .. string.rep("=", 50))
-    print("🔧 Correções baseadas no ChatGPT:")
-    print("   1. RaycastParams sem nil")
-    print("   2. pcall removido dos loops ESP")
-    print("   3. TriggerBot precisão 35px")
-    print("   4. Delta time na mira (jitter fix)")
-    print("   5. Memory leak resolvido (RemovePlayer)")
-    print("   6. goto removido, código limpo")
+    print("🔧 Correções finais:")
+    print("   1. Botão flutuante: abre SÓ ao clicar nele")
+    print("   2. FOV Circle: sincronizado com slider")
+    print("   3. Aimbot: delta time + smooth corrigido")
+    print("   4. Performance: os.clock() + intervalo otimizado")
+    print("   5. Input: IsClickOnObject verificação precisa")
     print("=" .. string.rep("=", 50))
 end
 
