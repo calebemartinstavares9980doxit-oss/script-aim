@@ -1,7 +1,7 @@
 --[[
-    QuantumAim PRO - Aimbot + ESP System (VERSÃO FINAL CORRIGIDA)
-    Versão: 3.0.2
-    TODOS os bugs corrigidos
+    QuantumAim PRO - Aimbot + ESP System
+    Versão: 3.0.3 (FINAL DE VERDADE)
+    Adicionado: Botão flutuante + Minimizar + Arrastar
 ]]
 
 -- Proteção contra execução múltipla
@@ -18,7 +18,7 @@ local Config = {
         Smoothness = 0.5,
         Prediction = 0.135,
         TeamCheck = true,
-        WallCheck = false, -- false = atira através de paredes, true = respeita paredes
+        WallCheck = false,
         AutoShoot = false,
         TriggerBot = false
     },
@@ -31,6 +31,11 @@ local Config = {
         HealthBar = false,
         Line = false,
         MaxDistance = 2000
+    },
+    
+    UI = {
+        Minimized = false,
+        Position = UDim2.new(0.5, -190, 0.2, 0)
     }
 }
 
@@ -40,6 +45,7 @@ local Services = {
     RunService = game:GetService("RunService"),
     CoreGui = game:GetService("CoreGui"),
     UserInputService = game:GetService("UserInputService"),
+    TweenService = game:GetService("TweenService"),
     Workspace = workspace
 }
 
@@ -52,7 +58,7 @@ local LocalPlayer = Services.Players.LocalPlayer
 local Camera = Services.Workspace.CurrentCamera
 
 -- ============================================
--- CORREÇÃO 3: Verificação segura do Drawing
+-- Sistema Drawing (ESP)
 -- ============================================
 local HasDrawing = false
 pcall(function()
@@ -64,10 +70,7 @@ end)
 local ESP_Objects = {}
 
 local function CreateESP(player)
-    -- Verificação segura
-    if not HasDrawing then
-        return nil
-    end
+    if not HasDrawing then return nil end
     
     local success, esp = pcall(function()
         local newESP = {
@@ -80,27 +83,23 @@ local function CreateESP(player)
             Line = Drawing.new("Line")
         }
         
-        -- Configurar Box
         newESP.Box.Color = Color3.fromRGB(255, 0, 0)
         newESP.Box.Thickness = 2
         newESP.Box.Filled = false
         newESP.Box.Visible = false
         
-        -- Configurar Nome
         newESP.Name.Color = Color3.fromRGB(255, 255, 255)
         newESP.Name.Size = 14
         newESP.Name.Center = true
         newESP.Name.Outline = true
         newESP.Name.Visible = false
         
-        -- Configurar Distância
         newESP.Distance.Color = Color3.fromRGB(200, 200, 200)
         newESP.Distance.Size = 13
         newESP.Distance.Center = true
         newESP.Distance.Outline = true
         newESP.Distance.Visible = false
         
-        -- Configurar Health
         newESP.HealthBar.Color = Color3.fromRGB(50, 50, 50)
         newESP.HealthBar.Filled = true
         newESP.HealthBar.Visible = false
@@ -109,7 +108,6 @@ local function CreateESP(player)
         newESP.HealthFill.Filled = true
         newESP.HealthFill.Visible = false
         
-        -- Configurar Linha
         newESP.Line.Color = Color3.fromRGB(255, 255, 255)
         newESP.Line.Thickness = 1
         newESP.Line.Visible = false
@@ -126,88 +124,34 @@ local function CreateESP(player)
 end
 
 -- ============================================
--- CORREÇÃO 4: Raycast corrigido
+-- Sistema de Mira
 -- ============================================
+local CurrentTarget = nil
+local LastShot = 0
+
 local function IsVisible(character, part)
-    -- CORREÇÃO 1: Se WallCheck = false, atira através de paredes
-    if not Config.Aimbot.WallCheck then
-        return true
-    end
+    if not Config.Aimbot.WallCheck then return true end
     
-    -- Se WallCheck = true, verifica se tem parede
     local rayOrigin = Camera.CFrame.Position
-    local rayDirection = part.Position - rayOrigin  -- CORREÇÃO 4: Distância real
+    local rayDirection = part.Position - rayOrigin
     
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
     
     local rayResult = Services.Workspace:Raycast(rayOrigin, rayDirection, rayParams)
-    
     return rayResult == nil
 end
 
--- ============================================
--- CORREÇÃO 2: TriggerBot REAL
--- ============================================
-local function IsMouseOnTarget(target)
-    if not target then return false end
-    
-    local mousePos = Services.UserInputService:GetMouseLocation()
-    
-    -- Verificar se o mouse está sobre o alvo na tela
-    local targetScreenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
-    
-    if not onScreen then return false end
-    
-    local targetScreenVector = Vector2.new(targetScreenPos.X, targetScreenPos.Y)
-    local mouseVector = Vector2.new(mousePos.X, mousePos.Y)
-    
-    -- Distância do mouse até o alvo na tela
-    local distanceToTarget = (targetScreenVector - mouseVector).Magnitude
-    
-    -- Só considera "no alvo" se estiver a menos de 50 pixels
-    return distanceToTarget < 50
-end
-
--- ============================================
--- CORREÇÃO 5: Verificação segura de funções
--- ============================================
-local function SafeClick()
-    local success = pcall(function()
-        mouse1press()
-        wait(0.01)
-        mouse1release()
-    end)
-    
-    if not success then
-        -- Fallback: tenta usar VirtualInputManager
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendMouseButtonEvent(0, 0, 0, true, nil, 0)
-            wait(0.01)
-            vim:SendMouseButtonEvent(0, 0, 0, false, nil, 0)
-        end)
-    end
-end
-
--- Sistema de Aimbot
-local CurrentTarget = nil
-local LastShot = 0
-
 local function GetTargets()
     local targets = {}
-    
     if not LocalPlayer.Character then return targets end
     
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     
     for _, player in pairs(Services.Players:GetPlayers()) do
         if player == LocalPlayer then continue end
-        
-        if Config.Aimbot.TeamCheck and player.Team == LocalPlayer.Team then
-            continue
-        end
+        if Config.Aimbot.TeamCheck and player.Team == LocalPlayer.Team then continue end
         
         local character = player.Character
         if not character then continue end
@@ -218,16 +162,12 @@ local function GetTargets()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then continue end
         
-        -- Wall Check
-        if not IsVisible(character, aimPart) then
-            continue
-        end
+        if not IsVisible(character, aimPart) then continue end
         
         local screenPos, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
         if not onScreen then continue end
         
         local distance2D = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-        
         if distance2D > Config.Aimbot.FOV then continue end
         
         local velocity = Vector3.zero
@@ -249,6 +189,14 @@ local function GetTargets()
     return targets
 end
 
+local function SafeClick()
+    pcall(function()
+        mouse1press()
+        wait(0.01)
+        mouse1release()
+    end)
+end
+
 local function AimbotUpdate()
     if not Config.Aimbot.Enabled then
         CurrentTarget = nil
@@ -260,7 +208,6 @@ local function AimbotUpdate()
     if #targets > 0 then
         CurrentTarget = targets[1]
         
-        -- Aplicar mira
         if Config.Aimbot.Smoothness >= 1 then
             Camera.CFrame = CFrame.new(Camera.CFrame.Position, CurrentTarget.Position)
         else
@@ -270,21 +217,19 @@ local function AimbotUpdate()
         
         local currentTime = tick()
         
-        -- Auto Shoot
-        if Config.Aimbot.AutoShoot then
-            if currentTime - LastShot > 0.1 then
-                SafeClick()
-                LastShot = currentTime
-            end
+        if Config.Aimbot.AutoShoot and currentTime - LastShot > 0.1 then
+            SafeClick()
+            LastShot = currentTime
         end
         
-        -- TriggerBot REAL (verifica mouse no alvo)
         if Config.Aimbot.TriggerBot and not Config.Aimbot.AutoShoot then
-            if IsMouseOnTarget(CurrentTarget) then
-                if currentTime - LastShot > 0.05 then
-                    SafeClick()
-                    LastShot = currentTime
-                end
+            local mousePos = Services.UserInputService:GetMouseLocation()
+            local targetScreenPos = Camera:WorldToViewportPoint(CurrentTarget.Position)
+            local distanceToTarget = (Vector2.new(targetScreenPos.X, targetScreenPos.Y) - Vector2.new(mousePos.X, mousePos.Y)).Magnitude
+            
+            if distanceToTarget < 50 and currentTime - LastShot > 0.05 then
+                SafeClick()
+                LastShot = currentTime
             end
         end
     else
@@ -292,16 +237,16 @@ local function AimbotUpdate()
     end
 end
 
+-- ============================================
 -- Sistema ESP
+-- ============================================
 local function UpdateESP()
     if not Config.ESP.Enabled then
         for _, esp in pairs(ESP_Objects) do
             for key, drawing in pairs(esp) do
                 if key ~= "Player" and type(drawing) == "userdata" then
                     pcall(function() 
-                        if drawing.Visible then
-                            drawing.Visible = false
-                        end
+                        if drawing.Visible then drawing.Visible = false end
                     end)
                 end
             end
@@ -352,21 +297,13 @@ local function UpdateESP()
             distance = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
         end
         
-        if distance > Config.ESP.MaxDistance then
-            for key, drawing in pairs(esp) do
-                if key ~= "Player" and type(drawing) == "userdata" then
-                    pcall(function() drawing.Visible = false end)
-                end
-            end
-            continue
-        end
+        if distance > Config.ESP.MaxDistance then continue end
         
         local safeDistance = math.max(distance, 1)
         local scale = 1000 / safeDistance
         local boxWidth = math.clamp(scale * 3, 10, 200)
         local boxHeight = math.clamp(scale * 5, 15, 300)
         
-        -- Box
         if Config.ESP.Box then
             pcall(function()
                 esp.Box.Visible = true
@@ -375,7 +312,6 @@ local function UpdateESP()
             end)
         end
         
-        -- Nome
         if Config.ESP.Name then
             pcall(function()
                 esp.Name.Visible = true
@@ -384,7 +320,6 @@ local function UpdateESP()
             end)
         end
         
-        -- Distância
         if Config.ESP.Distance then
             pcall(function()
                 esp.Distance.Visible = true
@@ -393,7 +328,6 @@ local function UpdateESP()
             end)
         end
         
-        -- Barra de vida
         if Config.ESP.HealthBar then
             local healthPercent = humanoid.Health / math.max(humanoid.MaxHealth, 1)
             
@@ -417,7 +351,6 @@ local function UpdateESP()
             end)
         end
         
-        -- Linha
         if Config.ESP.Line then
             pcall(function()
                 esp.Line.Visible = true
@@ -428,42 +361,200 @@ local function UpdateESP()
     end
 end
 
--- Interface
+-- ============================================
+-- 🆕 INTERFACE COM BOTÃO FLUTUANTE + MINIMIZAR
+-- ============================================
 local function CreateUI()
     local gui = Instance.new("ScreenGui")
     gui.Name = "QuantumAimPRO"
     gui.Parent = Services.CoreGui
     gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Parent = gui
-    mainFrame.Size = UDim2.new(0, 380, 0, 520)
-    mainFrame.Position = UDim2.new(0.5, -190, 0.2, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-    mainFrame.BackgroundTransparency = 0.05
-    mainFrame.BorderSizePixel = 0
+    -- ============================================
+    -- 🎯 BOTÃO FLUTUANTE
+    -- ============================================
+    local FloatButton = Instance.new("TextButton")
+    FloatButton.Name = "FloatButton"
+    FloatButton.Parent = gui
+    FloatButton.Size = UDim2.new(0, 50, 0, 50)
+    FloatButton.Position = UDim2.new(0.85, 0, 0.45, 0)
+    FloatButton.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+    FloatButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    FloatButton.Text = "🎯"
+    FloatButton.TextSize = 24
+    FloatButton.Font = Enum.Font.SourceSans
+    FloatButton.AutoButtonColor = false
+    FloatButton.BorderSizePixel = 0
+    FloatButton.ZIndex = 10
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = mainFrame
+    local floatCorner = Instance.new("UICorner")
+    floatCorner.CornerRadius = UDim.new(1, 0)
+    floatCorner.Parent = FloatButton
     
-    local title = Instance.new("TextLabel")
-    title.Parent = mainFrame
-    title.Size = UDim2.new(1, -20, 0, 35)
-    title.Position = UDim2.new(0, 10, 0, 5)
-    title.BackgroundTransparency = 1
-    title.Text = "🎯 QUANTUM PRO v3.0.2"
-    title.TextColor3 = Color3.fromRGB(255, 70, 70)
-    title.TextSize = 16
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
+    -- Sombra do botão
+    local floatShadow = Instance.new("UIStroke")
+    floatShadow.Parent = FloatButton
+    floatShadow.Color = Color3.fromRGB(0, 0, 0)
+    floatShadow.Thickness = 2
+    floatShadow.Transparency = 0.5
     
-    local function AddButton(text, yPos, callback)
+    -- Texto "Quantum" abaixo do botão
+    local FloatLabel = Instance.new("TextLabel")
+    FloatLabel.Parent = FloatButton
+    FloatLabel.Size = UDim2.new(0, 80, 0, 20)
+    FloatLabel.Position = UDim2.new(0.5, -40, 1, 5)
+    FloatLabel.BackgroundTransparency = 1
+    FloatLabel.Text = "QUANTUM"
+    FloatLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    FloatLabel.TextSize = 10
+    FloatLabel.Font = Enum.Font.GothamBold
+    FloatLabel.TextStrokeTransparency = 0.5
+    
+    -- ============================================
+    -- BOTÃO DE MINIMIZAR (no FloatButton)
+    -- ============================================
+    local MinimizeIndicator = Instance.new("Frame")
+    MinimizeIndicator.Name = "MinimizeIndicator"
+    MinimizeIndicator.Parent = FloatButton
+    MinimizeIndicator.Size = UDim2.new(0, 16, 0, 16)
+    MinimizeIndicator.Position = UDim2.new(1, -5, 0, -5)
+    MinimizeIndicator.BackgroundColor3 = Config.UI and Config.UI.Position and Color3.fromRGB(50, 200, 80) or Color3.fromRGB(255, 70, 70)
+    MinimizeIndicator.BorderSizePixel = 0
+    MinimizeIndicator.ZIndex = 11
+    
+    local indicatorCorner = Instance.new("UICorner")
+    indicatorCorner.CornerRadius = UDim.new(1, 0)
+    indicatorCorner.Parent = MinimizeIndicator
+    
+    local indicatorText = Instance.new("TextLabel")
+    indicatorText.Parent = MinimizeIndicator
+    indicatorText.Size = UDim2.new(1, 0, 1, 0)
+    indicatorText.BackgroundTransparency = 1
+    indicatorText.Text = "−"
+    indicatorText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    indicatorText.TextSize = 14
+    indicatorText.Font = Enum.Font.GothamBold
+    
+    -- ============================================
+    -- FRAME PRINCIPAL
+    -- ============================================
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Parent = gui
+    MainFrame.Size = UDim2.new(0, 380, 0, 520)
+    MainFrame.Position = UDim2.new(0.5, -190, 0.2, 0)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    MainFrame.BackgroundTransparency = 0.05
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Visible = true
+    MainFrame.ZIndex = 5
+    
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0, 8)
+    mainCorner.Parent = MainFrame
+    
+    -- ============================================
+    -- BARRA DE TÍTULO (COM BOTÕES)
+    -- ============================================
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Name = "TitleBar"
+    TitleBar.Parent = MainFrame
+    TitleBar.Size = UDim2.new(1, 0, 0, 40)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    TitleBar.BorderSizePixel = 0
+    
+    local titleBarCorner = Instance.new("UICorner")
+    titleBarCorner.CornerRadius = UDim.new(0, 8)
+    titleBarCorner.Parent = TitleBar
+    
+    -- Título
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Parent = TitleBar
+    Title.Size = UDim2.new(1, -80, 1, 0)
+    Title.Position = UDim2.new(0, 15, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "🎯 QUANTUM PRO v3.0.3"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.TextSize = 15
+    Title.Font = Enum.Font.GothamBold
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- ============================================
+    -- BOTÃO MINIMIZAR (NO FRAME PRINCIPAL)
+    -- ============================================
+    local MinimizeBtn = Instance.new("TextButton")
+    MinimizeBtn.Name = "MinimizeBtn"
+    MinimizeBtn.Parent = TitleBar
+    MinimizeBtn.Size = UDim2.new(0, 28, 0, 28)
+    MinimizeBtn.Position = UDim2.new(1, -68, 0.5, -14)
+    MinimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 180, 30)
+    MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MinimizeBtn.Text = "−"
+    MinimizeBtn.TextSize = 20
+    MinimizeBtn.Font = Enum.Font.GothamBold
+    MinimizeBtn.AutoButtonColor = false
+    MinimizeBtn.BorderSizePixel = 0
+    MinimizeBtn.ZIndex = 6
+    
+    local minCorner = Instance.new("UICorner")
+    minCorner.CornerRadius = UDim.new(0, 4)
+    minCorner.Parent = MinimizeBtn
+    
+    -- ============================================
+    -- BOTÃO FECHAR
+    -- ============================================
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Name = "CloseBtn"
+    CloseBtn.Parent = TitleBar
+    CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+    CloseBtn.Position = UDim2.new(1, -34, 0.5, -14)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseBtn.Text = "✕"
+    CloseBtn.TextSize = 16
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.AutoButtonColor = false
+    CloseBtn.BorderSizePixel = 0
+    CloseBtn.ZIndex = 6
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 4)
+    closeCorner.Parent = CloseBtn
+    
+    -- ============================================
+    -- CONTEÚDO (SCROLL)
+    -- ============================================
+    local ContentFrame = Instance.new("ScrollingFrame")
+    ContentFrame.Name = "Content"
+    ContentFrame.Parent = MainFrame
+    ContentFrame.Size = UDim2.new(1, 0, 1, -40)
+    ContentFrame.Position = UDim2.new(0, 0, 0, 40)
+    ContentFrame.BackgroundTransparency = 1
+    ContentFrame.ScrollBarThickness = 4
+    ContentFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 70, 70)
+    ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
+    ContentFrame.BorderSizePixel = 0
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Parent = ContentFrame
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout.Padding = UDim.new(0, 5)
+    
+    local UIPadding = Instance.new("UIPadding")
+    UIPadding.Parent = ContentFrame
+    UIPadding.PaddingTop = UDim.new(0, 10)
+    UIPadding.PaddingLeft = UDim.new(0, 10)
+    UIPadding.PaddingRight = UDim.new(0, 10)
+    
+    -- ============================================
+    -- FUNÇÃO CRIAR BOTÕES
+    -- ============================================
+    local function AddButton(text, callback)
         local btn = Instance.new("TextButton")
-        btn.Parent = mainFrame
-        btn.Size = UDim2.new(1, -20, 0, 35)
-        btn.Position = UDim2.new(0, 10, 0, yPos)
+        btn.Parent = ContentFrame
+        btn.Size = UDim2.new(1, 0, 0, 35)
         btn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
         btn.TextColor3 = Color3.fromRGB(240, 240, 240)
         btn.Text = "🔴 " .. text
@@ -488,60 +579,177 @@ local function CreateUI()
         return btn
     end
     
-    -- CORREÇÃO 1: Botão com texto correto
-    AddButton("AIMBOT PRINCIPAL", 50, function(enabled)
+    -- Botões
+    AddButton("AIMBOT PRINCIPAL", function(enabled)
         Config.Aimbot.Enabled = enabled
     end)
     
-    AddButton("AUTO SHOOT", 95, function(enabled)
+    AddButton("AUTO SHOOT", function(enabled)
         Config.Aimbot.AutoShoot = enabled
     end)
     
-    -- CORREÇÃO 2: TriggerBot com descrição correta
-    AddButton("TRIGGER BOT (Mouse no alvo)", 140, function(enabled)
+    AddButton("TRIGGER BOT (Mouse no alvo)", function(enabled)
         Config.Aimbot.TriggerBot = enabled
     end)
     
-    -- CORREÇÃO 1: Texto correto do WallCheck
-    AddButton("RESPEITAR PAREDES (Wall Check)", 185, function(enabled)
+    AddButton("RESPEITAR PAREDES", function(enabled)
         Config.Aimbot.WallCheck = enabled
-        -- Quando ligado, NÃO atira através de paredes
     end)
     
-    AddButton("ESP (VER INIMIGOS)", 230, function(enabled)
+    -- Separador
+    local separator1 = Instance.new("Frame")
+    separator1.Parent = ContentFrame
+    separator1.Size = UDim2.new(1, 0, 0, 1)
+    separator1.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    separator1.BorderSizePixel = 0
+    
+    AddButton("ESP (VER INIMIGOS)", function(enabled)
         Config.ESP.Enabled = enabled
     end)
     
-    AddButton("ESP BOX", 275, function(enabled)
+    AddButton("ESP BOX", function(enabled)
         Config.ESP.Box = enabled
     end)
     
-    AddButton("ESP NOME", 320, function(enabled)
+    AddButton("ESP NOME", function(enabled)
         Config.ESP.Name = enabled
     end)
     
-    AddButton("ESP VIDA", 365, function(enabled)
+    AddButton("ESP VIDA", function(enabled)
         Config.ESP.HealthBar = enabled
     end)
     
-    AddButton("ESP LINHA", 410, function(enabled)
+    AddButton("ESP LINHA", function(enabled)
         Config.ESP.Line = enabled
     end)
     
     -- Status
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Parent = mainFrame
-    statusLabel.Size = UDim2.new(1, -20, 0, 40)
-    statusLabel.Position = UDim2.new(0, 10, 0, 465)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "✅ v3.0.2 - Todos bugs corrigidos\nWallCheck: OFF = Atira através de paredes"
-    statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-    statusLabel.TextSize = 11
-    statusLabel.Font = Enum.Font.GothamBold
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    local StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Parent = ContentFrame
+    StatusLabel.Size = UDim2.new(1, 0, 0, 30)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Text = "✅ v3.0.3 | Botão flutuante ativo"
+    StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    StatusLabel.TextSize = 11
+    StatusLabel.Font = Enum.Font.GothamBold
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    
+    -- ============================================
+    -- 🆕 SISTEMA DE ARRASTAR (BOTÃO FLUTUANTE)
+    -- ============================================
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    FloatButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = FloatButton.Position
+            
+            -- Efeito de clique
+            FloatButton.Size = UDim2.new(0, 55, 0, 55)
+        end
+    end)
+    
+    FloatButton.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+            FloatButton.Size = UDim2.new(0, 50, 0, 50)
+        end
+    end)
+    
+    Services.UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            FloatButton.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    -- ============================================
+    -- 🆕 LÓGICA DE MINIMIZAR/MAXIMIZAR
+    -- ============================================
+    local isMinimized = false
+    
+    local function MinimizeWindow()
+        isMinimized = true
+        MainFrame.Visible = false
+        FloatButton.Text = "👁️"
+        FloatButton.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
+        MinimizeIndicator.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
+        indicatorText.Text = "+"
+    end
+    
+    local function MaximizeWindow()
+        isMinimized = false
+        MainFrame.Visible = true
+        FloatButton.Text = "🎯"
+        FloatButton.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+        MinimizeIndicator.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+        indicatorText.Text = "−"
+    end
+    
+    -- Botão minimizar do frame
+    MinimizeBtn.MouseButton1Click:Connect(function()
+        MinimizeWindow()
+    end)
+    
+    -- Botão flutuante (abre/fecha)
+    FloatButton.MouseButton1Click:Connect(function()
+        if not dragging then
+            if isMinimized then
+                MaximizeWindow()
+            else
+                MinimizeWindow()
+            end
+        end
+    end)
+    
+    -- Botão fechar
+    CloseBtn.MouseButton1Click:Connect(function()
+        gui:Destroy()
+    end)
+    
+    -- ============================================
+    -- 🆕 ARRASTAR O FRAME PRINCIPAL
+    -- ============================================
+    local frameDragging = false
+    local frameDragStart = nil
+    local frameStartPos = nil
+    
+    TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            frameDragging = true
+            frameDragStart = input.Position
+            frameStartPos = MainFrame.Position
+        end
+    end)
+    
+    TitleBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            frameDragging = false
+        end
+    end)
+    
+    Services.UserInputService.InputChanged:Connect(function(input)
+        if frameDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - frameDragStart
+            MainFrame.Position = UDim2.new(
+                frameStartPos.X.Scale,
+                frameStartPos.X.Offset + delta.X,
+                frameStartPos.Y.Scale,
+                frameStartPos.Y.Offset + delta.Y
+            )
+        end
+    end)
 end
 
--- Inicializar
+-- Inicializar Interface
 CreateUI()
 
 -- Criar ESP para jogadores
@@ -579,12 +787,10 @@ Services.RunService.RenderStepped:Connect(function()
 end)
 
 print("=" .. string.rep("=", 50))
-print("✅ QUANTUM PRO v3.0.2 - VERSÃO FINAL")
+print("✅ QUANTUM PRO v3.0.3 CARREGADO!")
 print("=" .. string.rep("=", 50))
-print("🔧 TODAS as correções do ChatGPT aplicadas:")
-print("   ✅ WallCheck: texto corrigido")
-print("   ✅ TriggerBot: verifica mouse no alvo")
-print("   ✅ Drawing: verificação segura")
-print("   ✅ Raycast: distância real")
-print("   ✅ mouse1: fallback seguro")
+print("🎯 Botão flutuante: ARRASTÁVEL")
+print("📱 Minimizar: Clique no botão flutuante")
+print("🔄 Maximizar: Clique de novo")
+print("❌ Fechar: Botão X vermelho")
 print("=" .. string.rep("=", 50))
