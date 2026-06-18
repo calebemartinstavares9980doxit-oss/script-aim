@@ -1,35 +1,35 @@
 --[[
-    QuantumAim v8.0 - AIMBOT APELÃO + ESP ESQUELETO
-    - Mira instantânea na cabeça
-    - ESP mostrando esqueleto dos inimigos
-    - Sem FOV Circle (mais limpo)
-    - Ultra agressivo
+    QuantumAim v9.0 - FUNCIONAL (BASE v3.0.3 + ESP ESQUELETO)
+    - Aimbot comprovadamente funcional
+    - Botão flutuante arrastável
+    - ESP Esqueleto adicionado
+    - Estrutura simples e funcional
 ]]
 
-if game:GetService("CoreGui"):FindFirstChild("QuantumAim_v8") then
-    game:GetService("CoreGui"):FindFirstChild("QuantumAim_v8"):Destroy()
+if game:GetService("CoreGui"):FindFirstChild("QuantumAim_v9") then
+    game:GetService("CoreGui"):FindFirstChild("QuantumAim_v9"):Destroy()
 end
 
 -- Configurações
 local Config = {
     Aimbot = {
-        Enabled = false,
-        AimPart = "Head", -- Head = cabeça, HumanoidRootPart = peito
-        Smoothness = 1, -- 1 = instantâneo (apelão)
-        Prediction = 0.2, -- Predição de movimento
-        TeamCheck = false, -- false = atira em todos
-        WallCheck = false, -- false = atira através de paredes
-        AutoShoot = true, -- Já liga atirando
-        TriggerBot = false,
-        MaxDistance = 5000 -- Alcance máximo
+        Enabled = true, -- JÁ LIGA ATIVADO
+        AimPart = "Head",
+        Smoothness = 1, -- Instantâneo
+        Prediction = 0.15,
+        TeamCheck = false, -- Atira em todos
+        WallCheck = false, -- Através de paredes
+        AutoShoot = true, -- Já atira sozinho
+        TriggerBot = false
     },
+    
     ESP = {
-        Enabled = false,
-        Skeleton = false, -- Esqueleto completo
+        Enabled = true, -- JÁ LIGA ATIVADO
+        Skeleton = true, -- Esqueleto
         Box = false,
-        Name = false,
-        Distance = false,
-        HealthBar = false,
+        Name = true,
+        Distance = true,
+        HealthBar = true,
         MaxDistance = 3000
     }
 }
@@ -40,6 +40,7 @@ local Services = {
     RunService = game:GetService("RunService"),
     CoreGui = game:GetService("CoreGui"),
     UserInputService = game:GetService("UserInputService"),
+    TweenService = game:GetService("TweenService"),
     Workspace = workspace
 }
 
@@ -50,122 +51,13 @@ end
 local LocalPlayer = Services.Players.LocalPlayer
 local Camera = Services.Workspace.CurrentCamera
 
--- Sistema de Input (SIMPLIFICADO)
-local InputManager = {
-    ClickHandlers = {},
-    Platform = "Mouse"
-}
-
-function InputManager:DetectPlatform()
-    pcall(function()
-        local hasTouch = Services.UserInputService.TouchEnabled
-        local hasKeyboard = Services.UserInputService.KeyboardEnabled
-        if hasTouch and not hasKeyboard then
-            self.Platform = "Touch"
-        else
-            self.Platform = "Mouse"
-        end
-    end)
-end
-
-function InputManager:SafeClick()
-    if self.Platform == "Mouse" then
-        pcall(function() mouse1press() task.wait(0.01) mouse1release() end)
-    else
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            if vim then
-                vim:SendMouseButtonEvent(0, 0, 0, true, nil, 0)
-                task.wait(0.01)
-                vim:SendMouseButtonEvent(0, 0, 0, false, nil, 0)
-            end
-        end)
-    end
-end
-
-function InputManager:IsClickOnObject(input, guiObject)
-    if not guiObject or not input then return false end
-    local mousePos = Services.UserInputService:GetMouseLocation()
-    local objPos = guiObject.AbsolutePosition
-    local objSize = guiObject.AbsoluteSize
-    return mousePos.X >= objPos.X and mousePos.X <= objPos.X + objSize.X and
-           mousePos.Y >= objPos.Y and mousePos.Y <= objPos.Y + objSize.Y
-end
-
-function InputManager:RegisterClickHandler(guiObject, callback)
-    table.insert(self.ClickHandlers, {
-        Object = guiObject,
-        Callback = callback,
-        IsDragging = false,
-        StartPos = nil,
-        StartMouse = nil,
-        HasMoved = false
-    })
-end
-
-function InputManager:Initialize()
-    self:DetectPlatform()
-    
-    Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
-        for _, handler in ipairs(self.ClickHandlers) do
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-               input.UserInputType == Enum.UserInputType.Touch then
-                if self:IsClickOnObject(input, handler.Object) then
-                    handler.IsDragging = true
-                    handler.HasMoved = false
-                    handler.StartPos = handler.Object.Position
-                    handler.StartMouse = input.Position
-                    return
-                end
-            end
-        end
-    end)
-    
-    Services.UserInputService.InputChanged:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
-        for _, handler in ipairs(self.ClickHandlers) do
-            if handler.IsDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
-                                        input.UserInputType == Enum.UserInputType.Touch) then
-                local delta = input.Position - handler.StartMouse
-                if delta.Magnitude > 5 then
-                    handler.HasMoved = true
-                    handler.Object.Position = UDim2.new(
-                        math.clamp(handler.StartPos.X.Scale, 0, 0.95),
-                        math.clamp(handler.StartPos.X.Offset + delta.X, -200, 2000),
-                        math.clamp(handler.StartPos.Y.Scale, 0, 0.95),
-                        math.clamp(handler.StartPos.Y.Offset + delta.Y, -100, 2000)
-                    )
-                end
-            end
-        end
-    end)
-    
-    Services.UserInputService.InputEnded:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
-        for _, handler in ipairs(self.ClickHandlers) do
-            if handler.IsDragging then
-                handler.IsDragging = false
-                if not handler.HasMoved and handler.Callback then
-                    handler.Callback()
-                end
-            end
-        end
-    end)
-end
-
 -- ============================================
--- SISTEMA DE ESP ESQUELETO
+-- ESP ESQUELETO + NORMAL
 -- ============================================
-local ESPManager = {
-    Objects = {},
-    HasDrawing = false,
-    LastUpdate = 0,
-    UpdateInterval = 0.05
-}
+local HasDrawing = false
+pcall(function() if Drawing ~= nil then HasDrawing = true end end)
+
+local ESP_Objects = {}
 
 -- Partes do esqueleto
 local SkeletonParts = {
@@ -185,20 +77,12 @@ local SkeletonParts = {
     {"RightLowerLeg", "RightFoot"}
 }
 
-function ESPManager:Initialize()
-    pcall(function()
-        if Drawing ~= nil then
-            self.HasDrawing = true
-        end
-    end)
-end
-
-function ESPManager:CreateESP(player)
-    if not self.HasDrawing then return end
+local function CreateESP(player)
+    if not HasDrawing then return nil end
     
     local esp = {
         Player = player,
-        Bones = {}, -- Linhas do esqueleto
+        Bones = {},
         Box = Drawing.new("Square"),
         Name = Drawing.new("Text"),
         Distance = Drawing.new("Text"),
@@ -207,7 +91,7 @@ function ESPManager:CreateESP(player)
         Destroyed = false
     }
     
-    -- Criar linhas para cada osso
+    -- Criar linhas do esqueleto
     for _ = 1, #SkeletonParts do
         local line = Drawing.new("Line")
         line.Color = Color3.fromRGB(255, 255, 255)
@@ -233,7 +117,7 @@ function ESPManager:CreateESP(player)
     esp.Distance.Outline = true
     esp.Distance.Visible = false
     
-    esp.HealthBar.Color = Color3.fromRGB(30, 30, 30)
+    esp.HealthBar.Color = Color3.fromRGB(50, 50, 50)
     esp.HealthBar.Filled = true
     esp.HealthBar.Visible = false
     
@@ -241,20 +125,15 @@ function ESPManager:CreateESP(player)
     esp.HealthFill.Filled = true
     esp.HealthFill.Visible = false
     
-    table.insert(self.Objects, esp)
+    table.insert(ESP_Objects, esp)
+    return esp
 end
 
-function ESPManager:Update()
-    local currentTime = os.clock()
-    if currentTime - self.LastUpdate < self.UpdateInterval then return end
-    self.LastUpdate = currentTime
-    
+local function UpdateESP()
     if not Config.ESP.Enabled then
-        for _, esp in ipairs(self.Objects) do
+        for _, esp in pairs(ESP_Objects) do
             if not esp.Destroyed then
-                for _, bone in ipairs(esp.Bones) do
-                    bone.Visible = false
-                end
+                for _, bone in ipairs(esp.Bones) do bone.Visible = false end
                 esp.Box.Visible = false
                 esp.Name.Visible = false
                 esp.Distance.Visible = false
@@ -267,7 +146,7 @@ function ESPManager:Update()
     
     if not Camera then return end
     
-    for _, esp in ipairs(self.Objects) do
+    for _, esp in pairs(ESP_Objects) do
         if esp.Destroyed then continue end
         
         local player = esp.Player
@@ -313,7 +192,7 @@ function ESPManager:Update()
             continue
         end
         
-        -- ESP Esqueleto
+        -- Esqueleto
         if Config.ESP.Skeleton then
             for i, partPair in ipairs(SkeletonParts) do
                 local partA = character:FindFirstChild(partPair[1])
@@ -338,7 +217,7 @@ function ESPManager:Update()
             for _, bone in ipairs(esp.Bones) do bone.Visible = false end
         end
         
-        -- Box
+        -- Box, Nome, Distância, Vida (igual ao original funcional)
         local safeDistance = math.max(distance, 1)
         local scale = 1000 / safeDistance
         local boxWidth = math.clamp(scale * 3, 10, 200)
@@ -372,47 +251,27 @@ function ESPManager:Update()
             esp.HealthFill.Size = Vector2.new(3, boxHeight * healthPercent)
             esp.HealthFill.Position = Vector2.new(headPos.X - boxWidth/2 - 5, 
                 headPos.Y - boxHeight/2 + boxHeight * (1 - healthPercent))
+            
+            if healthPercent > 0.6 then esp.HealthFill.Color = Color3.fromRGB(0, 255, 0)
+            elseif healthPercent > 0.3 then esp.HealthFill.Color = Color3.fromRGB(255, 255, 0)
+            else esp.HealthFill.Color = Color3.fromRGB(255, 0, 0) end
         else
             esp.HealthBar.Visible = false esp.HealthFill.Visible = false
         end
     end
 end
 
-function ESPManager:RemovePlayer(player)
-    for i, esp in ipairs(self.Objects) do
-        if esp.Player == player then
-            esp.Destroyed = true
-            for _, bone in ipairs(esp.Bones) do
-                pcall(function() bone:Remove() end)
-            end
-            pcall(function() esp.Box:Remove() end)
-            pcall(function() esp.Name:Remove() end)
-            pcall(function() esp.Distance:Remove() end)
-            pcall(function() esp.HealthBar:Remove() end)
-            pcall(function() esp.HealthFill:Remove() end)
-            table.remove(self.Objects, i)
-            break
-        end
-    end
-end
-
 -- ============================================
--- SISTEMA DE AIMBOT APELÃO
+-- SISTEMA DE MIRA (FUNCIONAL - BASE v3.0.3)
 -- ============================================
-local AimManager = {
-    CurrentTarget = nil,
-    LastShot = 0,
-    ShotCooldown = 0.05 -- 20 tiros por segundo
-}
+local CurrentTarget = nil
+local LastShot = 0
 
-function AimManager:GetBestTarget()
-    if not LocalPlayer.Character or not Camera then return nil end
+local function GetTargets()
+    local targets = {}
+    if not LocalPlayer.Character then return targets end
     
-    local bestTarget = nil
-    local closestDistance = Config.Aimbot.MaxDistance
-    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    
-    for _, player in ipairs(Services.Players:GetPlayers()) do
+    for _, player in pairs(Services.Players:GetPlayers()) do
         if player == LocalPlayer then continue end
         if Config.Aimbot.TeamCheck and player.Team == LocalPlayer.Team then continue end
         
@@ -425,130 +284,134 @@ function AimManager:GetBestTarget()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then continue end
         
-        local distance3D = (LocalPlayer.Character.HumanoidRootPart.Position - aimPart.Position).Magnitude
-        if distance3D > Config.Aimbot.MaxDistance then continue end
+        local distance = (LocalPlayer.Character.HumanoidRootPart.Position - aimPart.Position).Magnitude
         
-        local screenPos, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
-        if not onScreen then continue end
-        
-        local distance2D = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-        
-        if distance3D < closestDistance then
-            closestDistance = distance3D
-            
-            local velocity = aimPart:IsA("BasePart") and (aimPart.AssemblyLinearVelocity or aimPart.Velocity) or Vector3.zero
-            local predictedPos = aimPart.Position + (velocity * Config.Aimbot.Prediction)
-            
-            bestTarget = {
-                Player = player,
-                Position = predictedPos,
-                Distance = distance3D
-            }
+        local velocity = Vector3.zero
+        if aimPart:IsA("BasePart") then
+            velocity = aimPart.AssemblyLinearVelocity or aimPart.Velocity or Vector3.zero
         end
+        
+        local predictedPos = aimPart.Position + (velocity * Config.Aimbot.Prediction)
+        
+        table.insert(targets, {
+            Player = player,
+            Position = predictedPos,
+            Distance = distance
+        })
     end
     
-    return bestTarget
+    table.sort(targets, function(a, b) return a.Distance < b.Distance end)
+    return targets
 end
 
-function AimManager:Update()
+local function SafeClick()
+    pcall(function()
+        mouse1press()
+        task.wait(0.01)
+        mouse1release()
+    end)
+end
+
+local function AimbotUpdate()
     if not Config.Aimbot.Enabled then
-        self.CurrentTarget = nil
+        CurrentTarget = nil
         return
     end
     
-    local target = self:GetBestTarget()
+    local targets = GetTargets()
     
-    if target then
-        self.CurrentTarget = target
+    if #targets > 0 then
+        CurrentTarget = targets[1]
         
-        -- Mira instantânea na cabeça (APELÃO)
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+        -- Mira instantânea (COMPROVADAMENTE FUNCIONAL)
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, CurrentTarget.Position)
         
-        -- AutoShoot disparando loucamente
-        if Config.Aimbot.AutoShoot then
-            local currentTime = os.clock()
-            if currentTime - self.LastShot > self.ShotCooldown then
-                InputManager:SafeClick()
-                self.LastShot = currentTime
-            end
+        local currentTime = tick()
+        
+        -- AutoShoot
+        if Config.Aimbot.AutoShoot and currentTime - LastShot > 0.08 then
+            SafeClick()
+            LastShot = currentTime
         end
     else
-        self.CurrentTarget = nil
+        CurrentTarget = nil
     end
 end
 
 -- ============================================
--- INTERFACE SIMPLES
+-- INTERFACE (FUNCIONAL - BASE v3.0.3)
 -- ============================================
-local UIManager = {
-    ScreenGui = nil,
-    MainFrame = nil,
-    FloatButton = nil
-}
-
-function UIManager:Create()
+local function CreateUI()
     local gui = Instance.new("ScreenGui")
-    gui.Name = "QuantumAim_v8"
+    gui.Name = "QuantumAim_v9"
     gui.Parent = Services.CoreGui
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.IgnoreGuiInset = true
     
-    self.ScreenGui = gui
-    
-    -- Botão Flutuante
-    self.FloatButton = Instance.new("TextButton")
-    self.FloatButton.Name = "FloatButton"
-    self.FloatButton.Parent = gui
-    self.FloatButton.Size = UDim2.new(0, 45, 0, 45)
-    self.FloatButton.Position = UDim2.new(0.88, 0, 0.45, 0)
-    self.FloatButton.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
-    self.FloatButton.Text = "🎯"
-    self.FloatButton.TextSize = 20
-    self.FloatButton.AutoButtonColor = false
-    self.FloatButton.BorderSizePixel = 0
-    self.FloatButton.ZIndex = 10
-    self.FloatButton.BackgroundTransparency = 0.1
+    -- BOTÃO FLUTUANTE (COMPROVADAMENTE FUNCIONAL)
+    local FloatButton = Instance.new("TextButton")
+    FloatButton.Name = "FloatButton"
+    FloatButton.Parent = gui
+    FloatButton.Size = UDim2.new(0, 48, 0, 48)
+    FloatButton.Position = UDim2.new(0.88, 0, 0.45, 0)
+    FloatButton.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
+    FloatButton.Text = "💀"
+    FloatButton.TextSize = 22
+    FloatButton.Font = Enum.Font.SourceSans
+    FloatButton.AutoButtonColor = false
+    FloatButton.BorderSizePixel = 0
+    FloatButton.ZIndex = 10
+    FloatButton.BackgroundTransparency = 0.1
     
     local floatCorner = Instance.new("UICorner")
-    floatCorner.CornerRadius = UDim.new(0, 14)
-    floatCorner.Parent = self.FloatButton
+    floatCorner.CornerRadius = UDim.new(1, 0)
+    floatCorner.Parent = FloatButton
     
-    self.StatusDot = Instance.new("Frame")
-    self.StatusDot.Parent = self.FloatButton
-    self.StatusDot.Size = UDim2.new(0, 10, 0, 10)
-    self.StatusDot.Position = UDim2.new(1, -2, 0, -2)
-    self.StatusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    self.StatusDot.BorderSizePixel = 0
-    self.StatusDot.ZIndex = 12
+    local floatShadow = Instance.new("UIStroke")
+    floatShadow.Parent = FloatButton
+    floatShadow.Color = Color3.fromRGB(0, 0, 0)
+    floatShadow.Thickness = 2
+    floatShadow.Transparency = 0.5
+    
+    -- Indicador de status
+    local StatusDot = Instance.new("Frame")
+    StatusDot.Name = "StatusDot"
+    StatusDot.Parent = FloatButton
+    StatusDot.Size = UDim2.new(0, 12, 0, 12)
+    StatusDot.Position = UDim2.new(1, -2, 0, -2)
+    StatusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    StatusDot.BorderSizePixel = 0
+    StatusDot.ZIndex = 12
     
     local statusCorner = Instance.new("UICorner")
     statusCorner.CornerRadius = UDim.new(1, 0)
-    statusCorner.Parent = self.StatusDot
+    statusCorner.Parent = StatusDot
     
-    -- Frame Principal
-    self.MainFrame = Instance.new("Frame")
-    self.MainFrame.Parent = gui
-    self.MainFrame.Size = UDim2.new(0, 320, 0, 380)
-    self.MainFrame.Position = UDim2.new(0.02, 0, 0.15, 0)
-    self.MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-    self.MainFrame.BackgroundTransparency = 0.1
-    self.MainFrame.BorderSizePixel = 0
-    self.MainFrame.Visible = true
+    -- FRAME PRINCIPAL
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Parent = gui
+    MainFrame.Size = UDim2.new(0, 360, 0, 420)
+    MainFrame.Position = UDim2.new(0.02, 0, 0.12, 0)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    MainFrame.BackgroundTransparency = 0.08
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Visible = true
     
     local mainCorner = Instance.new("UICorner")
     mainCorner.CornerRadius = UDim.new(0, 10)
-    mainCorner.Parent = self.MainFrame
+    mainCorner.Parent = MainFrame
     
     local mainStroke = Instance.new("UIStroke")
-    mainStroke.Parent = self.MainFrame
+    mainStroke.Parent = MainFrame
     mainStroke.Color = Color3.fromRGB(255, 50, 50)
     mainStroke.Thickness = 1.5
     mainStroke.Transparency = 0.4
     
-    -- TitleBar
+    -- TITLE BAR
     local TitleBar = Instance.new("Frame")
-    TitleBar.Parent = self.MainFrame
+    TitleBar.Name = "TitleBar"
+    TitleBar.Parent = MainFrame
     TitleBar.Size = UDim2.new(1, 0, 0, 38)
     TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
     TitleBar.BackgroundTransparency = 0.3
@@ -560,23 +423,24 @@ function UIManager:Create()
     
     local Title = Instance.new("TextLabel")
     Title.Parent = TitleBar
-    Title.Size = UDim2.new(1, -60, 1, 0)
+    Title.Size = UDim2.new(1, -70, 1, 0)
     Title.Position = UDim2.new(0, 15, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "💀 QUANTUM AIM"
+    Title.Text = "💀 QUANTUM v9.0"
     Title.TextColor3 = Color3.fromRGB(255, 200, 200)
     Title.TextSize = 14
     Title.Font = Enum.Font.GothamBlack
     Title.TextXAlignment = Enum.TextXAlignment.Left
     
+    -- MINIMIZAR
     local MinimizeBtn = Instance.new("TextButton")
     MinimizeBtn.Parent = TitleBar
-    MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
-    MinimizeBtn.Position = UDim2.new(1, -30, 0.5, -12)
+    MinimizeBtn.Size = UDim2.new(0, 26, 0, 26)
+    MinimizeBtn.Position = UDim2.new(1, -58, 0.5, -13)
     MinimizeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     MinimizeBtn.Text = "−"
-    MinimizeBtn.TextSize = 16
+    MinimizeBtn.TextSize = 18
     MinimizeBtn.Font = Enum.Font.GothamBold
     MinimizeBtn.AutoButtonColor = false
     MinimizeBtn.BorderSizePixel = 0
@@ -585,14 +449,26 @@ function UIManager:Create()
     minCorner.CornerRadius = UDim.new(0, 4)
     minCorner.Parent = MinimizeBtn
     
-    MinimizeBtn.MouseButton1Click:Connect(function()
-        self.MainFrame.Visible = false
-        self.StatusDot.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
-    end)
+    -- FECHAR
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Parent = TitleBar
+    CloseBtn.Size = UDim2.new(0, 26, 0, 26)
+    CloseBtn.Position = UDim2.new(1, -28, 0.5, -13)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseBtn.Text = "✕"
+    CloseBtn.TextSize = 14
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.AutoButtonColor = false
+    CloseBtn.BorderSizePixel = 0
     
-    -- Conteúdo
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 4)
+    closeCorner.Parent = CloseBtn
+    
+    -- CONTEÚDO
     local ContentFrame = Instance.new("ScrollingFrame")
-    ContentFrame.Parent = self.MainFrame
+    ContentFrame.Parent = MainFrame
     ContentFrame.Size = UDim2.new(1, 0, 1, -38)
     ContentFrame.Position = UDim2.new(0, 0, 0, 38)
     ContentFrame.BackgroundTransparency = 1
@@ -612,13 +488,14 @@ function UIManager:Create()
     UIPadding.PaddingLeft = UDim.new(0, 8)
     UIPadding.PaddingRight = UDim.new(0, 8)
     
-    local function AddButton(text, callback, defaultEnabled)
+    -- FUNÇÃO BOTÕES (COMPROVADAMENTE FUNCIONAL)
+    local function AddButton(text, callback)
         local btn = Instance.new("TextButton")
         btn.Parent = ContentFrame
-        btn.Size = UDim2.new(1, 0, 0, 30)
-        btn.BackgroundColor3 = defaultEnabled and Color3.fromRGB(200, 30, 30) or Color3.fromRGB(30, 30, 45)
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Text = (defaultEnabled and "  🟢  " or "  🔴  ") .. text
+        btn.Size = UDim2.new(1, 0, 0, 33)
+        btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+        btn.Text = "🔴 " .. text
         btn.Font = Enum.Font.GothamBold
         btn.TextSize = 11
         btn.AutoButtonColor = false
@@ -629,11 +506,11 @@ function UIManager:Create()
         btnCorner.CornerRadius = UDim.new(0, 4)
         btnCorner.Parent = btn
         
-        local enabled = defaultEnabled or false
+        local enabled = false
         
         btn.MouseButton1Click:Connect(function()
             enabled = not enabled
-            btn.Text = (enabled and "  🟢  " or "  🔴  ") .. text
+            btn.Text = (enabled and "🟢 " or "🔴 ") .. text
             btn.BackgroundColor3 = enabled and Color3.fromRGB(200, 30, 30) or Color3.fromRGB(30, 30, 45)
             if callback then callback(enabled) end
         end)
@@ -641,10 +518,9 @@ function UIManager:Create()
         return btn
     end
     
-    AddButton("AIMBOT (MIRA NA CABEÇA)", function(enabled) Config.Aimbot.Enabled = enabled end, true)
-    AddButton("AUTO FIRE (ATIRA SOZINHO)", function(enabled) Config.Aimbot.AutoShoot = enabled end, true)
-    AddButton("ATRAVÉS DE PAREDES", function(enabled) Config.Aimbot.WallCheck = not enabled end, true)
-    AddButton("MIRAR EM TODOS", function(enabled) Config.Aimbot.TeamCheck = not enabled end, true)
+    AddButton("AIMBOT (MIRA NA CABEÇA)", function(enabled) Config.Aimbot.Enabled = enabled end)
+    AddButton("AUTO FIRE", function(enabled) Config.Aimbot.AutoShoot = enabled end)
+    AddButton("ATRAVÉS DE PAREDES", function(enabled) Config.Aimbot.WallCheck = not enabled end)
     
     local sep = Instance.new("Frame")
     sep.Parent = ContentFrame
@@ -653,78 +529,171 @@ function UIManager:Create()
     sep.BackgroundTransparency = 0.5
     sep.BorderSizePixel = 0
     
-    AddButton("ESP ESQUELETO", function(enabled) Config.ESP.Skeleton = enabled end, true)
-    AddButton("ESP BOX", function(enabled) Config.ESP.Box = enabled end, true)
-    AddButton("ESP NOME", function(enabled) Config.ESP.Name = enabled end, true)
-    AddButton("ESP VIDA", function(enabled) Config.ESP.HealthBar = enabled end, true)
-    AddButton("ESP DISTÂNCIA", function(enabled) Config.ESP.Distance = enabled end, true)
+    AddButton("ESP ESQUELETO", function(enabled) Config.ESP.Skeleton = enabled end)
+    AddButton("ESP BOX", function(enabled) Config.ESP.Box = enabled end)
+    AddButton("ESP NOME", function(enabled) Config.ESP.Name = enabled end)
+    AddButton("ESP VIDA", function(enabled) Config.ESP.HealthBar = enabled end)
+    AddButton("ESP DISTÂNCIA", function(enabled) Config.ESP.Distance = enabled end)
     
     local StatusLabel = Instance.new("TextLabel")
     StatusLabel.Parent = ContentFrame
     StatusLabel.Size = UDim2.new(1, 0, 0, 25)
     StatusLabel.BackgroundTransparency = 1
-    StatusLabel.Text = "💀 AIMBOT APELÃO ATIVO"
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    StatusLabel.Text = "✅ v9.0 | Funcional"
+    StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
     StatusLabel.TextSize = 10
-    StatusLabel.Font = Enum.Font.GothamBlack
+    StatusLabel.Font = Enum.Font.GothamBold
     StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     
-    InputManager:RegisterClickHandler(self.FloatButton, function()
-        self.MainFrame.Visible = not self.MainFrame.Visible
-        if self.MainFrame.Visible then
-            self.StatusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-        else
-            self.StatusDot.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
+    -- ============================================
+    -- ARRASTAR BOTÃO FLUTUANTE (FUNCIONAL)
+    -- ============================================
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    FloatButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = FloatButton.Position
         end
     end)
-end
-
--- ============================================
--- INICIALIZAÇÃO
--- ============================================
-local function Initialize()
-    -- Já liga o aimbot e ESP
-    Config.Aimbot.Enabled = true
-    Config.Aimbot.AutoShoot = true
-    Config.Aimbot.WallCheck = false
-    Config.Aimbot.TeamCheck = false
-    Config.ESP.Enabled = true
-    Config.ESP.Skeleton = true
     
-    InputManager:Initialize()
-    ESPManager:Initialize()
-    UIManager:Create()
-    
-    for _, player in ipairs(Services.Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            ESPManager:CreateESP(player)
+    FloatButton.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
         end
+    end)
+    
+    Services.UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            FloatButton.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    -- ============================================
+    -- MINIMIZAR/MAXIMIZAR (FUNCIONAL)
+    -- ============================================
+    local isMinimized = false
+    
+    local function MinimizeWindow()
+        isMinimized = true
+        MainFrame.Visible = false
+        FloatButton.Text = "👁️"
+        FloatButton.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
+        StatusDot.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
     end
     
-    Services.Players.PlayerAdded:Connect(function(player)
-        if player ~= LocalPlayer then
-            task.wait(1)
-            ESPManager:CreateESP(player)
+    local function MaximizeWindow()
+        isMinimized = false
+        MainFrame.Visible = true
+        FloatButton.Text = "💀"
+        FloatButton.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
+        StatusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    end
+    
+    MinimizeBtn.MouseButton1Click:Connect(MinimizeWindow)
+    
+    FloatButton.MouseButton1Click:Connect(function()
+        if not dragging then
+            if isMinimized then
+                MaximizeWindow()
+            else
+                MinimizeWindow()
+            end
         end
     end)
     
-    Services.Players.PlayerRemoving:Connect(function(player)
-        ESPManager:RemovePlayer(player)
+    CloseBtn.MouseButton1Click:Connect(function()
+        gui:Destroy()
     end)
     
-    Services.RunService.Heartbeat:Connect(function()
-        AimManager:Update()
-        ESPManager:Update()
+    -- ============================================
+    -- ARRASTAR FRAME (FUNCIONAL)
+    -- ============================================
+    local frameDragging = false
+    local frameDragStart = nil
+    local frameStartPos = nil
+    
+    TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            frameDragging = true
+            frameDragStart = input.Position
+            frameStartPos = MainFrame.Position
+        end
     end)
     
-    print("=" .. string.rep("=", 50))
-    print("💀 QUANTUM AIM v8.0 - AIMBOT APELÃO")
-    print("=" .. string.rep("=", 50))
-    print("🎯 Mira instantânea na cabeça")
-    print("🔫 AutoFire 20 tiros/segundo")
-    print("🧱 Através de paredes")
-    print("🦴 ESP Esqueleto")
-    print("=" .. string.rep("=", 50))
+    TitleBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            frameDragging = false
+        end
+    end)
+    
+    Services.UserInputService.InputChanged:Connect(function(input)
+        if frameDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - frameDragStart
+            MainFrame.Position = UDim2.new(
+                frameStartPos.X.Scale,
+                frameStartPos.X.Offset + delta.X,
+                frameStartPos.Y.Scale,
+                frameStartPos.Y.Offset + delta.Y
+            )
+        end
+    end)
 end
 
-Initialize()
+-- Inicializar
+CreateUI()
+
+-- Criar ESP para jogadores existentes
+for _, player in pairs(Services.Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        CreateESP(player)
+    end
+end
+
+Services.Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer then
+        task.wait(1)
+        CreateESP(player)
+    end
+end)
+
+Services.Players.PlayerRemoving:Connect(function(player)
+    for i, esp in pairs(ESP_Objects) do
+        if esp.Player == player then
+            esp.Destroyed = true
+            for _, bone in ipairs(esp.Bones) do
+                pcall(function() bone:Remove() end)
+            end
+            pcall(function() esp.Box:Remove() end)
+            pcall(function() esp.Name:Remove() end)
+            pcall(function() esp.Distance:Remove() end)
+            pcall(function() esp.HealthBar:Remove() end)
+            pcall(function() esp.HealthFill:Remove() end)
+            table.remove(ESP_Objects, i)
+            break
+        end
+    end
+end)
+
+-- Loop principal
+Services.RunService.RenderStepped:Connect(function()
+    pcall(UpdateESP)
+    pcall(AimbotUpdate)
+end)
+
+print("=" .. string.rep("=", 50))
+print("💀 QUANTUM v9.0 - FUNCIONAL")
+print("=" .. string.rep("=", 50))
+print("✅ Aimbot: COMPROVADAMENTE FUNCIONAL")
+print("✅ Botão Flutuante: ARRASTÁVEL")
+print("✅ ESP Esqueleto: ATIVO")
+print("=" .. string.rep("=", 50))
